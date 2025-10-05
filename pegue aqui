@@ -1,0 +1,164 @@
+--// CONFIGURAÇÃO INICIAL
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+--// MENU
+local menuVisible = false
+local options = {
+    box = true,
+    skeleton = true,
+    rgb = true,
+}
+
+--// GUI do MENU
+local function createMenu()
+    local screenGui = Instance.new("ScreenGui", game.CoreGui)
+    screenGui.Name = "ESP_Menu"
+
+    local frame = Instance.new("Frame", screenGui)
+    frame.Position = UDim2.new(0, 20, 0, 100)
+    frame.Size = UDim2.new(0, 180, 0, 130)
+    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    frame.BorderSizePixel = 0
+    frame.Visible = menuVisible
+
+    local function createToggle(name, y, default)
+        local toggle = Instance.new("TextButton", frame)
+        toggle.Position = UDim2.new(0, 10, 0, y)
+        toggle.Size = UDim2.new(0, 160, 0, 30)
+        toggle.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        toggle.TextColor3 = Color3.new(1, 1, 1)
+        toggle.Text = name .. ": " .. (default and "ON" or "OFF")
+        toggle.TextSize = 14
+
+        toggle.MouseButton1Click:Connect(function()
+            options[name:lower()] = not options[name:lower()]
+            toggle.Text = name .. ": " .. (options[name:lower()] and "ON" or "OFF")
+        end)
+    end
+
+    createToggle("Box", 10, options.box)
+    createToggle("Skeleton", 50, options.skeleton)
+    createToggle("RGB", 90, options.rgb)
+
+    return frame
+end
+
+local menu = createMenu()
+
+-- Alternar menu com a tecla L
+UserInputService.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.L then
+        menuVisible = not menuVisible
+        menu.Visible = menuVisible
+    end
+end)
+
+--// FUNÇÕES AUXILIARES
+
+-- Criar Drawing Box
+local function createBox()
+    local box = Drawing.new("Square")
+    box.Thickness = 1
+    box.Transparency = 1
+    box.Filled = false
+    return box
+end
+
+-- Criar Line para Skeleton
+local function createLine()
+    local line = Drawing.new("Line")
+    line.Thickness = 1
+    line.Transparency = 1
+    return line
+end
+
+-- Função para gerar RGB dinâmico
+local function getRGBColor()
+    local t = tick() * 2
+    return Color3.fromHSV(t % 1, 1, 1)
+end
+
+--// TABELA DE ESPS
+local ESP = {}
+
+--// ATUALIZAR ESPS
+RunService.RenderStepped:Connect(function()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            if not ESP[player] then
+                -- Criar estrutura de ESP
+                ESP[player] = {
+                    box = createBox(),
+                    lines = {}, -- Skeleton lines
+                }
+                for i = 1, 15 do
+                    table.insert(ESP[player].lines, createLine())
+                end
+            end
+
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+
+            if hrp and humanoid then
+                local pos, onscreen = Camera:WorldToViewportPoint(hrp.Position)
+                local color = options.rgb and getRGBColor() or Color3.fromRGB(255, 0, 0)
+
+                -- BOX
+                if options.box and onscreen then
+                    local size = humanoid.HipHeight + humanoid.BodyHeightScale.Value * 6
+                    local height = math.clamp(size * 10, 2, 300)
+                    local width = height / 2
+                    ESP[player].box.Position = Vector2.new(pos.X - width / 2, pos.Y - height / 2)
+                    ESP[player].box.Size = Vector2.new(width, height)
+                    ESP[player].box.Color = color
+                    ESP[player].box.Visible = true
+                else
+                    ESP[player].box.Visible = false
+                end
+
+                -- SKELETON
+                for _, line in ipairs(ESP[player].lines) do
+                    line.Visible = false
+                end
+
+                if options.skeleton then
+                    local function drawBone(from, to, index)
+                        local part1 = player.Character:FindFirstChild(from)
+                        local part2 = player.Character:FindFirstChild(to)
+                        if part1 and part2 then
+                            local p1, on1 = Camera:WorldToViewportPoint(part1.Position)
+                            local p2, on2 = Camera:WorldToViewportPoint(part2.Position)
+                            if on1 and on2 then
+                                local line = ESP[player].lines[index]
+                                line.From = Vector2.new(p1.X, p1.Y)
+                                line.To = Vector2.new(p2.X, p2.Y)
+                                line.Color = color
+                                line.Visible = true
+                            end
+                        end
+                    end
+
+                    drawBone("Head", "UpperTorso", 1)
+                    drawBone("UpperTorso", "LowerTorso", 2)
+                    drawBone("LowerTorso", "LeftUpperLeg", 3)
+                    drawBone("LeftUpperLeg", "LeftLowerLeg", 4)
+                    drawBone("LeftLowerLeg", "LeftFoot", 5)
+                    drawBone("LowerTorso", "RightUpperLeg", 6)
+                    drawBone("RightUpperLeg", "RightLowerLeg", 7)
+                    drawBone("RightLowerLeg", "RightFoot", 8)
+                    drawBone("UpperTorso", "LeftUpperArm", 9)
+                    drawBone("LeftUpperArm", "LeftLowerArm", 10)
+                    drawBone("LeftLowerArm", "LeftHand", 11)
+                    drawBone("UpperTorso", "RightUpperArm", 12)
+                    drawBone("RightUpperArm", "RightLowerArm", 13)
+                    drawBone("RightLowerArm", "RightHand", 14)
+                end
+            end
+        end
+    end
+end)
