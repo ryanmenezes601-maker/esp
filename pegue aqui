@@ -1,14 +1,13 @@
---// CONFIGURAÇÃO INICIAL
+--// Serviços principais
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-
-local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
---// VARIÁVEIS E OPÇÕES
-local menuVisible = false
+--// CONFIGURAÇÕES INICIAIS
 local options = {
+    -- ESP
     box = true,
     skeleton = true,
     rgb = true,
@@ -16,203 +15,252 @@ local options = {
     distance = true,
     fixedColor = Color3.fromRGB(255, 0, 0),
     font = "UI",
+
+    -- AIMBOT
+    aimbotEnabled = false,
+    toggle = false,
+    sensitivity = 0.3,
+    targetPart = "Head",
+    fov = 100,
+    teamCheck = false,
 }
 
-local availableFonts = {
-    UI = 0,
-    System = 1,
-    Plex = 2,
-    Monospace = 3,
-    Cartoon = 4,
-}
+local availableFonts = { UI = 0, System = 1, Plex = 2, Monospace = 3, Cartoon = 4 }
+local partsList = { "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso" }
 
---// MENU (tecla L)
-local function createMenu()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "ESP_Menu"
-    screenGui.Parent = game.CoreGui
+--// MENU PRINCIPAL
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ESP_Aimbot_Menu"
+screenGui.Parent = game.CoreGui
 
-    local frame = Instance.new("Frame", screenGui)
-    frame.Position = UDim2.new(0, 20, 0, 100)
-    frame.Size = UDim2.new(0, 190, 0, 220)
-    frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    frame.BorderSizePixel = 0
-    frame.Visible = menuVisible
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Position = UDim2.new(0, 20, 0, 100)
+mainFrame.Size = UDim2.new(0, 220, 0, 300)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
 
-    local function createToggle(name, y, default)
-        local toggle = Instance.new("TextButton", frame)
-        toggle.Position = UDim2.new(0, 10, 0, y)
-        toggle.Size = UDim2.new(0, 160, 0, 24)
-        toggle.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        toggle.TextColor3 = Color3.new(1, 1, 1)
-        toggle.Text = name .. ": " .. (default and "ON" or "OFF")
-        toggle.TextSize = 14
-        toggle.MouseButton1Click:Connect(function()
-            options[name:lower()] = not options[name:lower()]
-            toggle.Text = name .. ": " .. (options[name:lower()] and "ON" or "OFF")
-        end)
-    end
+local title = Instance.new("TextLabel", mainFrame)
+title.Text = "AIMBOT & ESP"
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
 
-    createToggle("Box", 8, options.box)
-    createToggle("Skeleton", 36, options.skeleton)
-    createToggle("RGB", 64, options.rgb)
-    createToggle("Name", 92, options.name)
-    createToggle("Distance", 120, options.distance)
+--// ABAS
+local tabsFrame = Instance.new("Frame", mainFrame)
+tabsFrame.Position = UDim2.new(0, 0, 0, 30)
+tabsFrame.Size = UDim2.new(1, 0, 0, 30)
+tabsFrame.BackgroundTransparency = 1
 
-    local colorButton = Instance.new("TextButton", frame)
-    colorButton.Position = UDim2.new(0, 10, 0, 148)
-    colorButton.Size = UDim2.new(0, 160, 0, 24)
-    colorButton.BackgroundColor3 = options.fixedColor
-    colorButton.Text = "Cor fixa"
-    colorButton.TextColor3 = Color3.new(1, 1, 1)
-    colorButton.MouseButton1Click:Connect(function()
-        local r, g, b = math.random(0, 255), math.random(0, 255), math.random(0, 255)
-        options.fixedColor = Color3.fromRGB(r, g, b)
-        colorButton.BackgroundColor3 = options.fixedColor
+local espTabButton = Instance.new("TextButton", tabsFrame)
+espTabButton.Size = UDim2.new(0.5, 0, 1, 0)
+espTabButton.Text = "ESP"
+espTabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+espTabButton.TextColor3 = Color3.new(1, 1, 1)
+
+local aimbotTabButton = Instance.new("TextButton", tabsFrame)
+aimbotTabButton.Position = UDim2.new(0.5, 0, 0, 0)
+aimbotTabButton.Size = UDim2.new(0.5, 0, 1, 0)
+aimbotTabButton.Text = "Aimbot"
+aimbotTabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+aimbotTabButton.TextColor3 = Color3.new(1, 1, 1)
+
+--// CONTEÚDO DAS ABAS
+local espFrame = Instance.new("Frame", mainFrame)
+espFrame.Position = UDim2.new(0, 0, 0, 60)
+espFrame.Size = UDim2.new(1, 0, 1, -60)
+espFrame.BackgroundTransparency = 1
+
+local aimbotFrame = Instance.new("Frame", mainFrame)
+aimbotFrame.Position = espFrame.Position
+aimbotFrame.Size = espFrame.Size
+aimbotFrame.BackgroundTransparency = 1
+aimbotFrame.Visible = false
+
+local function createToggle(parent, name, var)
+    local button = Instance.new("TextButton", parent)
+    button.Size = UDim2.new(0, 200, 0, 24)
+    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() - 1) * 28)
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Text = name .. ": " .. (options[var] and "ON" or "OFF")
+    button.TextSize = 14
+    button.MouseButton1Click:Connect(function()
+        options[var] = not options[var]
+        button.Text = name .. ": " .. (options[var] and "ON" or "OFF")
     end)
-
-    local fontButton = Instance.new("TextButton", frame)
-    fontButton.Position = UDim2.new(0, 10, 0, 176)
-    fontButton.Size = UDim2.new(0, 160, 0, 24)
-    fontButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    fontButton.Text = "Fonte: " .. options.font
-    fontButton.TextColor3 = Color3.new(1, 1, 1)
-
-    local fontList = {"UI", "System", "Plex", "Monospace", "Cartoon"}
-    local currentFontIndex = 1
-
-    fontButton.MouseButton1Click:Connect(function()
-        currentFontIndex = currentFontIndex % #fontList + 1
-        options.font = fontList[currentFontIndex]
-        fontButton.Text = "Fonte: " .. options.font
-    end)
-
-    return frame
 end
 
-local menu = createMenu()
+local function createDropdown(parent, name, var, list)
+    local button = Instance.new("TextButton", parent)
+    button.Size = UDim2.new(0, 200, 0, 24)
+    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() - 1) * 28)
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Text = name .. ": " .. tostring(options[var])
+    button.TextSize = 14
+    local index = 1
+    for i, v in ipairs(list) do
+        if v == options[var] then index = i end
+    end
+    button.MouseButton1Click:Connect(function()
+        index = (index % #list) + 1
+        options[var] = list[index]
+        button.Text = name .. ": " .. tostring(options[var])
+    end)
+end
+
+local function createSlider(parent, name, var, min, max)
+    local button = Instance.new("TextButton", parent)
+    button.Size = UDim2.new(0, 200, 0, 24)
+    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() - 1) * 28)
+    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Text = name .. ": " .. tostring(options[var])
+    button.TextSize = 14
+    button.MouseButton1Click:Connect(function()
+        options[var] = math.clamp(options[var] + 0.05, min, max)
+        if options[var] >= max then options[var] = min end
+        button.Text = name .. ": " .. string.format("%.2f", options[var])
+    end)
+end
+
+--// ESP OPÇÕES
+createToggle(espFrame, "Box", "box")
+createToggle(espFrame, "Skeleton", "skeleton")
+createToggle(espFrame, "RGB", "rgb")
+createToggle(espFrame, "Name", "name")
+createToggle(espFrame, "Distance", "distance")
+createDropdown(espFrame, "Fonte", "font", {"UI", "System", "Plex", "Monospace", "Cartoon"})
+
+local colorButton = Instance.new("TextButton", espFrame)
+colorButton.Size = UDim2.new(0, 200, 0, 24)
+colorButton.Position = UDim2.new(0, 10, 0, (#espFrame:GetChildren() - 1) * 28)
+colorButton.BackgroundColor3 = options.fixedColor
+colorButton.Text = "Cor fixa"
+colorButton.TextColor3 = Color3.new(1, 1, 1)
+colorButton.MouseButton1Click:Connect(function()
+    local r, g, b = math.random(0, 255), math.random(0, 255), math.random(0, 255)
+    options.fixedColor = Color3.fromRGB(r, g, b)
+    colorButton.BackgroundColor3 = options.fixedColor
+end)
+
+--// AIMBOT OPÇÕES
+createToggle(aimbotFrame, "Aimbot Ativo", "aimbotEnabled")
+createToggle(aimbotFrame, "Modo Toggle", "toggle")
+createDropdown(aimbotFrame, "Parte Alvo", "targetPart", partsList)
+createSlider(aimbotFrame, "Sensibilidade", "sensitivity", 0.1, 1)
+createSlider(aimbotFrame, "FOV", "fov", 50, 300)
+createToggle(aimbotFrame, "Team Check", "teamCheck")
+
+-- Alternar abas
+espTabButton.MouseButton1Click:Connect(function()
+    espFrame.Visible = true
+    aimbotFrame.Visible = false
+    espTabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    aimbotTabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+end)
+
+aimbotTabButton.MouseButton1Click:Connect(function()
+    espFrame.Visible = false
+    aimbotFrame.Visible = true
+    espTabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    aimbotTabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+end)
 
 -- Alternar menu com tecla L
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
     if input.KeyCode == Enum.KeyCode.L then
-        menuVisible = not menuVisible
-        menu.Visible = menuVisible
+        mainFrame.Visible = not mainFrame.Visible
     end
 end)
 
---// DRAWING UTILITIES
-local function createBox()
-    local b = Drawing.new("Square")
-    b.Thickness = 1
-    b.Transparency = 1
-    b.Filled = false
-    b.Color = Color3.fromRGB(255, 0, 0)
-    b.Visible = false
-    return b
-end
-
-local function createLine()
-    local l = Drawing.new("Line")
-    l.Thickness = 1
-    l.Transparency = 1
-    l.Color = Color3.fromRGB(255, 0, 0)
-    l.Visible = false
-    return l
-end
-
-local function createText()
-    local t = Drawing.new("Text")
-    t.Size = 14
-    t.Color = Color3.fromRGB(255, 255, 255)
-    t.Center = true
-    t.Outline = true
-    t.Visible = false
-    t.Font = 0
-    return t
-end
-
+-------------------------------------------------------
+--// ESP + AIMBOT FUNCIONAL (Simplificado)
+-------------------------------------------------------
+local ESP = {}
 local function getRGBColor()
     local t = tick() * 2
     return Color3.fromHSV(t % 1, 1, 1)
 end
 
---// ESP TABLE
-local ESP = {}
+local function createBox() local b = Drawing.new("Square"); b.Filled = false; b.Visible = false; b.Color = Color3.new(1,0,0); b.Thickness = 1; return b end
+local function createText() local t = Drawing.new("Text"); t.Center = true; t.Visible = false; t.Color = Color3.new(1,1,1); t.Size = 14; t.Outline = true; return t end
 
-local function cleanupPlayerESP(player)
-    local data = ESP[player]
-    if data then
-        for _, obj in pairs(data) do
-            if typeof(obj) == "table" then
-                for _, sub in ipairs(obj) do pcall(function() sub:Remove() end) end
+-- ESP
+RunService.RenderStepped:Connect(function()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            if not ESP[p] then
+                ESP[p] = { box = createBox(), name = createText(), dist = createText() }
+            end
+            local hrp = p.Character.HumanoidRootPart
+            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            local color = options.rgb and getRGBColor() or options.fixedColor
+            local esp = ESP[p]
+
+            if onScreen and options.box then
+                local height = 2500 / pos.Z
+                local width = height / 2
+                esp.box.Position = Vector2.new(pos.X - width / 2, pos.Y - height / 2)
+                esp.box.Size = Vector2.new(width, height)
+                esp.box.Color = color
+                esp.box.Visible = true
             else
-                pcall(function() obj:Remove() end)
+                esp.box.Visible = false
+            end
+
+            if onScreen and options.name then
+                esp.name.Text = p.Name
+                esp.name.Position = Vector2.new(pos.X, pos.Y - 80)
+                esp.name.Font = availableFonts[options.font]
+                esp.name.Color = color
+                esp.name.Visible = true
+            else
+                esp.name.Visible = false
+            end
+
+            if onScreen and options.distance then
+                local dist = (LocalPlayer.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
+                esp.dist.Text = string.format("%.1fm", dist)
+                esp.dist.Position = Vector2.new(pos.X, pos.Y + 80)
+                esp.dist.Font = availableFonts[options.font]
+                esp.dist.Visible = true
+            else
+                esp.dist.Visible = false
             end
         end
-        ESP[player] = nil
     end
+end)
+
+-- AIMBOT BÁSICO
+local function getClosestPlayer()
+    local closest, distance = nil, options.fov
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(options.targetPart) then
+            if options.teamCheck and player.Team == LocalPlayer.Team then continue end
+            local pos, onScreen = Camera:WorldToViewportPoint(player.Character[options.targetPart].Position)
+            if onScreen then
+                local diff = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                if diff < distance then
+                    distance = diff
+                    closest = player
+                end
+            end
+        end
+    end
+    return closest
 end
 
-Players.PlayerRemoving:Connect(cleanupPlayerESP)
-
---// ATUALIZAÇÃO DO ESP
 RunService.RenderStepped:Connect(function()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            if not ESP[player] then
-                ESP[player] = {
-                    box = createBox(),
-                    lines = {},
-                    nameText = createText(),
-                    distText = createText(),
-                }
-                for i = 1, 15 do table.insert(ESP[player].lines, createLine()) end
-            end
-
-            local data = ESP[player]
-            local hrp = player.Character.HumanoidRootPart
-            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            local pos3, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-            local color = options.rgb and getRGBColor() or options.fixedColor
-
-            -- CAIXA
-            if options.box and onScreen then
-                local height = 2500 / pos3.Z
-                local width = height / 2
-                data.box.Position = Vector2.new(pos3.X - width / 2, pos3.Y - height / 2)
-                data.box.Size = Vector2.new(width, height)
-                data.box.Color = color
-                data.box.Visible = true
-            else
-                data.box.Visible = false
-            end
-
-            -- NOME E DISTÂNCIA
-            data.nameText.Font = availableFonts[options.font] or 0
-            data.distText.Font = availableFonts[options.font] or 0
-
-            if options.name and onScreen then
-                data.nameText.Text = player.Name
-                data.nameText.Position = Vector2.new(pos3.X, pos3.Y - (data.box.Size.Y / 2) - 14)
-                data.nameText.Color = color
-                data.nameText.Visible = true
-            else
-                data.nameText.Visible = false
-            end
-
-            if options.distance and onScreen then
-                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                local dist = root and (root.Position - hrp.Position).Magnitude or 0
-                data.distText.Text = string.format("%.1f m", dist)
-                data.distText.Position = Vector2.new(pos3.X, pos3.Y + (data.box.Size.Y / 2) + 14)
-                data.distText.Color = Color3.fromRGB(200, 200, 200)
-                data.distText.Visible = true
-            else
-                data.distText.Visible = false
-            end
-        else
-            if ESP[player] then cleanupPlayerESP(player) end
-        end
+    if not options.aimbotEnabled then return end
+    local target = getClosestPlayer()
+    if target then
+        local targetPos = Camera:WorldToViewportPoint(target.Character[options.targetPart].Position)
+        mousemoverel((targetPos.X - UserInputService:GetMouseLocation().X) * options.sensitivity,
+                     (targetPos.Y - UserInputService:GetMouseLocation().Y) * options.sensitivity)
     end
 end)
