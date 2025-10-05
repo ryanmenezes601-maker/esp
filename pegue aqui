@@ -1,11 +1,15 @@
---// Serviços principais
+-- Aimbot e ESP feito por Ryan
+-- Integra um menu unificado com 2 abas: ESP e Aimbot (carrega Aimbot V2 remotamente)
+-- Atenção: usa Drawing, loadstring, game:HttpGet, getgenv, setclipboard, game.CoreGui
+
+--// Serviços
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
---// CONFIGURAÇÕES INICIAIS
+--// OPÇÕES INICIAIS (confirmadas: tema Exunys, fonte padrão UI, etc)
 local options = {
     -- ESP
     box = true,
@@ -15,239 +19,499 @@ local options = {
     distance = true,
     fixedColor = Color3.fromRGB(255, 0, 0),
     font = "UI",
+    offsetX = 0,
+    offsetY = 0,
 
-    -- AIMBOT
+    -- Aimbot (valores de fallback caso Aimbot remoto não carregue)
     aimbotEnabled = false,
     toggle = false,
-    sensitivity = 0.3,
+    sensitivity = 0.5,
     targetPart = "Head",
-    fov = 100,
-    teamCheck = false,
+    fov = 150,
+    teamCheck = true,
 }
 
 local availableFonts = { UI = 0, System = 1, Plex = 2, Monospace = 3, Cartoon = 4 }
-local partsList = { "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso" }
+local partsList = { "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso" }
 
---// MENU PRINCIPAL
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ESP_Aimbot_Menu"
-screenGui.Parent = game.CoreGui
-
-local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Position = UDim2.new(0, 20, 0, 100)
-mainFrame.Size = UDim2.new(0, 220, 0, 300)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-mainFrame.BorderSizePixel = 0
-mainFrame.Visible = false
-
-local title = Instance.new("TextLabel", mainFrame)
-title.Text = "AIMBOT & ESP"
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
-
---// ABAS
-local tabsFrame = Instance.new("Frame", mainFrame)
-tabsFrame.Position = UDim2.new(0, 0, 0, 30)
-tabsFrame.Size = UDim2.new(1, 0, 0, 30)
-tabsFrame.BackgroundTransparency = 1
-
-local espTabButton = Instance.new("TextButton", tabsFrame)
-espTabButton.Size = UDim2.new(0.5, 0, 1, 0)
-espTabButton.Text = "ESP"
-espTabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-espTabButton.TextColor3 = Color3.new(1, 1, 1)
-
-local aimbotTabButton = Instance.new("TextButton", tabsFrame)
-aimbotTabButton.Position = UDim2.new(0.5, 0, 0, 0)
-aimbotTabButton.Size = UDim2.new(0.5, 0, 1, 0)
-aimbotTabButton.Text = "Aimbot"
-aimbotTabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-aimbotTabButton.TextColor3 = Color3.new(1, 1, 1)
-
---// CONTEÚDO DAS ABAS
-local espFrame = Instance.new("Frame", mainFrame)
-espFrame.Position = UDim2.new(0, 0, 0, 60)
-espFrame.Size = UDim2.new(1, 0, 1, -60)
-espFrame.BackgroundTransparency = 1
-
-local aimbotFrame = Instance.new("Frame", mainFrame)
-aimbotFrame.Position = espFrame.Position
-aimbotFrame.Size = espFrame.Size
-aimbotFrame.BackgroundTransparency = 1
-aimbotFrame.Visible = false
-
-local function createToggle(parent, name, var)
-    local button = Instance.new("TextButton", parent)
-    button.Size = UDim2.new(0, 200, 0, 24)
-    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() - 1) * 28)
-    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.Text = name .. ": " .. (options[var] and "ON" or "OFF")
-    button.TextSize = 14
-    button.MouseButton1Click:Connect(function()
-        options[var] = not options[var]
-        button.Text = name .. ": " .. (options[var] and "ON" or "OFF")
-    end)
-end
-
-local function createDropdown(parent, name, var, list)
-    local button = Instance.new("TextButton", parent)
-    button.Size = UDim2.new(0, 200, 0, 24)
-    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() - 1) * 28)
-    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.Text = name .. ": " .. tostring(options[var])
-    button.TextSize = 14
-    local index = 1
-    for i, v in ipairs(list) do
-        if v == options[var] then index = i end
-    end
-    button.MouseButton1Click:Connect(function()
-        index = (index % #list) + 1
-        options[var] = list[index]
-        button.Text = name .. ": " .. tostring(options[var])
-    end)
-end
-
-local function createSlider(parent, name, var, min, max)
-    local button = Instance.new("TextButton", parent)
-    button.Size = UDim2.new(0, 200, 0, 24)
-    button.Position = UDim2.new(0, 10, 0, (#parent:GetChildren() - 1) * 28)
-    button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.Text = name .. ": " .. tostring(options[var])
-    button.TextSize = 14
-    button.MouseButton1Click:Connect(function()
-        options[var] = math.clamp(options[var] + 0.05, min, max)
-        if options[var] >= max then options[var] = min end
-        button.Text = name .. ": " .. string.format("%.2f", options[var])
-    end)
-end
-
---// ESP OPÇÕES
-createToggle(espFrame, "Box", "box")
-createToggle(espFrame, "Skeleton", "skeleton")
-createToggle(espFrame, "RGB", "rgb")
-createToggle(espFrame, "Name", "name")
-createToggle(espFrame, "Distance", "distance")
-createDropdown(espFrame, "Fonte", "font", {"UI", "System", "Plex", "Monospace", "Cartoon"})
-
-local colorButton = Instance.new("TextButton", espFrame)
-colorButton.Size = UDim2.new(0, 200, 0, 24)
-colorButton.Position = UDim2.new(0, 10, 0, (#espFrame:GetChildren() - 1) * 28)
-colorButton.BackgroundColor3 = options.fixedColor
-colorButton.Text = "Cor fixa"
-colorButton.TextColor3 = Color3.new(1, 1, 1)
-colorButton.MouseButton1Click:Connect(function()
-    local r, g, b = math.random(0, 255), math.random(0, 255), math.random(0, 255)
-    options.fixedColor = Color3.fromRGB(r, g, b)
-    colorButton.BackgroundColor3 = options.fixedColor
-end)
-
---// AIMBOT OPÇÕES
-createToggle(aimbotFrame, "Aimbot Ativo", "aimbotEnabled")
-createToggle(aimbotFrame, "Modo Toggle", "toggle")
-createDropdown(aimbotFrame, "Parte Alvo", "targetPart", partsList)
-createSlider(aimbotFrame, "Sensibilidade", "sensitivity", 0.1, 1)
-createSlider(aimbotFrame, "FOV", "fov", 50, 300)
-createToggle(aimbotFrame, "Team Check", "teamCheck")
-
--- Alternar abas
-espTabButton.MouseButton1Click:Connect(function()
-    espFrame.Visible = true
-    aimbotFrame.Visible = false
-    espTabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    aimbotTabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-end)
-
-aimbotTabButton.MouseButton1Click:Connect(function()
-    espFrame.Visible = false
-    aimbotFrame.Visible = true
-    espTabButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    aimbotTabButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-end)
-
--- Alternar menu com tecla L
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.L then
-        mainFrame.Visible = not mainFrame.Visible
-    end
-end)
-
--------------------------------------------------------
---// ESP + AIMBOT FUNCIONAL (Simplificado)
--------------------------------------------------------
-local ESP = {}
+--// Funções utilitárias
 local function getRGBColor()
     local t = tick() * 2
     return Color3.fromHSV(t % 1, 1, 1)
 end
 
-local function createBox() local b = Drawing.new("Square"); b.Filled = false; b.Visible = false; b.Color = Color3.new(1,0,0); b.Thickness = 1; return b end
-local function createText() local t = Drawing.new("Text"); t.Center = true; t.Visible = false; t.Color = Color3.new(1,1,1); t.Size = 14; t.Outline = true; return t end
+--// Criar GUI (menu unificado)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "Aimbot_ESP_UI"
+screenGui.Parent = game.CoreGui
 
--- ESP
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Position = UDim2.new(0, 20, 0, 80)
+mainFrame.Size = UDim2.new(0, 340, 0, 420)
+mainFrame.BackgroundColor3 = Color3.fromRGB(12, 18, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
+mainFrame.Active = true
+mainFrame.Draggable = true
+
+local title = Instance.new("TextLabel", mainFrame)
+title.Size = UDim2.new(1, 0, 0, 36)
+title.Position = UDim2.new(0, 0, 0, 0)
+title.BackgroundColor3 = Color3.fromRGB(22, 30, 44)
+title.TextColor3 = Color3.fromRGB(230, 240, 255)
+title.Text = "Aimbot e ESP feito por Ryan"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.BorderSizePixel = 0
+
+-- Tabs container
+local tabsFrame = Instance.new("Frame", mainFrame)
+tabsFrame.Position = UDim2.new(0, 8, 0, 44)
+tabsFrame.Size = UDim2.new(1, -16, 0, 32)
+tabsFrame.BackgroundTransparency = 1
+
+local espTabButton = Instance.new("TextButton", tabsFrame)
+espTabButton.Size = UDim2.new(0.5, -4, 1, 0)
+espTabButton.Position = UDim2.new(0, 0, 0, 0)
+espTabButton.Text = "ESP"
+espTabButton.Font = Enum.Font.GothamBold
+espTabButton.TextSize = 14
+espTabButton.BackgroundColor3 = Color3.fromRGB(30, 40, 56)
+espTabButton.TextColor3 = Color3.fromRGB(230, 240, 255)
+
+local aimbotTabButton = Instance.new("TextButton", tabsFrame)
+aimbotTabButton.Size = UDim2.new(0.5, -4, 1, 0)
+aimbotTabButton.Position = UDim2.new(0.5, 4, 0, 0)
+aimbotTabButton.Text = "Aimbot"
+aimbotTabButton.Font = Enum.Font.GothamBold
+aimbotTabButton.TextSize = 14
+aimbotTabButton.BackgroundColor3 = Color3.fromRGB(18, 25, 40)
+aimbotTabButton.TextColor3 = Color3.fromRGB(160, 180, 210)
+
+-- Content frames
+local contentFrame = Instance.new("Frame", mainFrame)
+contentFrame.Position = UDim2.new(0, 8, 0, 84)
+contentFrame.Size = UDim2.new(1, -16, 1, -92)
+contentFrame.BackgroundTransparency = 1
+
+local espFrame = Instance.new("Frame", contentFrame)
+espFrame.Size = UDim2.new(1, 0, 1, 0)
+espFrame.BackgroundTransparency = 1
+
+local aimbotFrame = Instance.new("Frame", contentFrame)
+aimbotFrame.Size = espFrame.Size
+aimbotFrame.BackgroundTransparency = 1
+aimbotFrame.Visible = false
+
+-- Helper to place controls vertically
+local function nextY(frame)
+    local count = 0
+    for _,v in ipairs(frame:GetChildren()) do
+        if v:IsA("GuiObject") then count = count + 1 end
+    end
+    return 28 * (count - 0) -- simple spacing (first control sits near top)
+end
+
+-- Small UI elements creators
+local function createToggle(parent, labelText, key)
+    local y = nextY(parent)
+    local btn = Instance.new("TextButton", parent)
+    btn.Position = UDim2.new(0, 6, 0, y)
+    btn.Size = UDim2.new(1, -12, 0, 24)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 36, 52)
+    btn.TextColor3 = Color3.fromRGB(225, 235, 245)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 14
+    btn.Text = labelText .. ": " .. (options[key] and "ON" or "OFF")
+    btn.MouseButton1Click:Connect(function()
+        options[key] = not options[key]
+        btn.Text = labelText .. ": " .. (options[key] and "ON" or "OFF")
+    end)
+    return btn
+end
+
+local function createDropdown(parent, labelText, key, list)
+    local y = nextY(parent)
+    local btn = Instance.new("TextButton", parent)
+    btn.Position = UDim2.new(0, 6, 0, y)
+    btn.Size = UDim2.new(1, -12, 0, 24)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 36, 52)
+    btn.TextColor3 = Color3.fromRGB(225, 235, 245)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 14
+    -- find index of current
+    local idx = 1
+    for i,v in ipairs(list) do if v == options[key] then idx = i end end
+    btn.Text = labelText .. ": " .. tostring(options[key])
+    btn.MouseButton1Click:Connect(function()
+        idx = (idx % #list) + 1
+        options[key] = list[idx]
+        btn.Text = labelText .. ": " .. tostring(options[key])
+    end)
+    return btn
+end
+
+local function createColorPicker(parent, labelText, key)
+    local y = nextY(parent)
+    local btn = Instance.new("TextButton", parent)
+    btn.Position = UDim2.new(0, 6, 0, y)
+    btn.Size = UDim2.new(1, -12, 0, 24)
+    btn.BackgroundColor3 = options[key]
+    btn.Text = labelText
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 14
+    btn.TextColor3 = Color3.fromRGB(240,240,240)
+    btn.MouseButton1Click:Connect(function()
+        -- quick random color picker for simplicity; you can replace by any color selection UI
+        local r,g,b = math.random(0,255), math.random(0,255), math.random(0,255)
+        options[key] = Color3.fromRGB(r,g,b)
+        btn.BackgroundColor3 = options[key]
+    end)
+    return btn
+end
+
+local function createNumberAdjust(parent, labelText, key, min, max, step)
+    step = step or 0.1
+    local y = nextY(parent)
+    local btn = Instance.new("TextButton", parent)
+    btn.Position = UDim2.new(0, 6, 0, y)
+    btn.Size = UDim2.new(1, -12, 0, 24)
+    btn.BackgroundColor3 = Color3.fromRGB(28, 36, 52)
+    btn.TextColor3 = Color3.fromRGB(225, 235, 245)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 14
+    btn.Text = labelText .. ": " .. tostring(options[key])
+    btn.MouseButton1Click:Connect(function()
+        options[key] = math.floor(((options[key] + step) <= max and (options[key] + step) or min) * 100) / 100
+        btn.Text = labelText .. ": " .. tostring(options[key])
+    end)
+    return btn
+end
+
+--// ESP Controls (left column)
+createToggle(espFrame, "Box", "box")
+createToggle(espFrame, "Skeleton", "skeleton")
+createToggle(espFrame, "RGB", "rgb")
+createToggle(espFrame, "Show Name", "name")
+createToggle(espFrame, "Show Distance", "distance")
+createDropdown(espFrame, "Fonte", "font", {"UI","System","Plex","Monospace","Cartoon"})
+createColorPicker(espFrame, "Cor fixa (click p/ random)", "fixedColor")
+-- Offsets
+createNumberAdjust(espFrame, "Offset X (click para +step)", "offsetX", -200, 200, 4)
+createNumberAdjust(espFrame, "Offset Y (click para +step)", "offsetY", -200, 200, 4)
+
+--// Aimbot Controls (right column)
+createToggle(aimbotFrame, "Aimbot Enabled", "aimbotEnabled")
+createToggle(aimbotFrame, "Toggle Mode", "toggle")
+createDropdown(aimbotFrame, "Target Part", "targetPart", partsList)
+createNumberAdjust(aimbotFrame, "Sensitivity", "sensitivity", 0.1, 1.0, 0.05)
+createNumberAdjust(aimbotFrame, "FOV", "fov", 10, 500, 10)
+createToggle(aimbotFrame, "Team Check", "teamCheck")
+
+-- Toggle tabs behavior
+espTabButton.MouseButton1Click:Connect(function()
+    espFrame.Visible = true
+    aimbotFrame.Visible = false
+    espTabButton.BackgroundColor3 = Color3.fromRGB(30,40,56)
+    aimbotTabButton.BackgroundColor3 = Color3.fromRGB(18,25,40)
+end)
+aimbotTabButton.MouseButton1Click:Connect(function()
+    espFrame.Visible = false
+    aimbotFrame.Visible = true
+    espTabButton.BackgroundColor3 = Color3.fromRGB(18,25,40)
+    aimbotTabButton.BackgroundColor3 = Color3.fromRGB(30,40,56)
+end)
+
+-- Open/close menu with L
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.L then
+        mainFrame.Visible = not mainFrame.Visible
+    end
+end)
+
+--// ESP Drawing Implementation
+local Drawing = Drawing -- assume available in executor
+local ESP_TABLE = {}
+
+local function makeBox()
+    local b = Drawing.new("Square")
+    b.Thickness = 1
+    b.Filled = false
+    b.Visible = false
+    b.Transparency = 1
+    return b
+end
+local function makeLine()
+    local l = Drawing.new("Line")
+    l.Thickness = 1
+    l.Visible = false
+    l.Transparency = 1
+    return l
+end
+local function makeText()
+    local t = Drawing.new("Text")
+    t.Size = 14
+    t.Color = Color3.fromRGB(255,255,255)
+    t.Center = true
+    t.Outline = true
+    t.Visible = false
+    t.Font = availableFonts[options.font] or 0
+    return t
+end
+
+local function cleanupESP(player)
+    local d = ESP_TABLE[player]
+    if d then
+        if d.box and d.box.Remove then pcall(function() d.box:Remove() end) end
+        if d.name and d.name.Remove then pcall(function() d.name:Remove() end) end
+        if d.dist and d.dist.Remove then pcall(function() d.dist:Remove() end) end
+        if d.lines then
+            for _,ln in ipairs(d.lines) do if ln and ln.Remove then pcall(function() ln:Remove() end) end end
+        end
+        ESP_TABLE[player] = nil
+    end
+end
+
+Players.PlayerRemoving:Connect(function(plr) cleanupESP(plr) end)
+
 RunService.RenderStepped:Connect(function()
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            if not ESP[p] then
-                ESP[p] = { box = createBox(), name = createText(), dist = createText() }
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            if not ESP_TABLE[player] then
+                ESP_TABLE[player] = {
+                    box = makeBox(),
+                    name = makeText(),
+                    dist = makeText(),
+                    lines = {},
+                }
+                for i=1, 15 do table.insert(ESP_TABLE[player].lines, makeLine()) end
             end
-            local hrp = p.Character.HumanoidRootPart
-            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            local data = ESP_TABLE[player]
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if not hrp or not humanoid then
+                cleanupESP(player)
+                continue
+            end
+            local pos3, onScreen = Camera:WorldToViewportPoint(hrp.Position)
             local color = options.rgb and getRGBColor() or options.fixedColor
-            local esp = ESP[p]
 
-            if onScreen and options.box then
-                local height = 2500 / pos.Z
-                local width = height / 2
-                esp.box.Position = Vector2.new(pos.X - width / 2, pos.Y - height / 2)
-                esp.box.Size = Vector2.new(width, height)
-                esp.box.Color = color
-                esp.box.Visible = true
+            -- Box
+            if options.box and onScreen and pos3.Z > 0.1 then
+                local height = math.clamp((humanoid.HipHeight or 2) * (humanoid.Health > 0 and 10 or 1) * (200/pos3.Z), 10, 1000)
+                local width = math.clamp(height / 2, 6, 600)
+                data.box.Position = Vector2.new(pos3.X - width/2 + options.offsetX, pos3.Y - height/2 + options.offsetY)
+                data.box.Size = Vector2.new(width, height)
+                data.box.Color = color
+                data.box.Visible = true
             else
-                esp.box.Visible = false
+                data.box.Visible = false
             end
 
-            if onScreen and options.name then
-                esp.name.Text = p.Name
-                esp.name.Position = Vector2.new(pos.X, pos.Y - 80)
-                esp.name.Font = availableFonts[options.font]
-                esp.name.Color = color
-                esp.name.Visible = true
-            else
-                esp.name.Visible = false
+            -- Skeleton (basic bones; only drawn when option on)
+            for _,ln in ipairs(data.lines) do ln.Visible = false end
+            if options.skeleton then
+                local function drawBone(a,b,index)
+                    local p1 = player.Character:FindFirstChild(a)
+                    local p2 = player.Character:FindFirstChild(b)
+                    if p1 and p2 then
+                        local p1v, on1 = Camera:WorldToViewportPoint(p1.Position)
+                        local p2v, on2 = Camera:WorldToViewportPoint(p2.Position)
+                        if on1 and on2 and p1v.Z > 0 and p2v.Z > 0 then
+                            local ln = data.lines[index]
+                            ln.From = Vector2.new(p1v.X + options.offsetX, p1v.Y + options.offsetY)
+                            ln.To = Vector2.new(p2v.X + options.offsetX, p2v.Y + options.offsetY)
+                            ln.Color = color
+                            ln.Visible = true
+                        end
+                    end
+                end
+                drawBone("Head","UpperTorso",1)
+                drawBone("UpperTorso","LowerTorso",2)
+                drawBone("LowerTorso","LeftUpperLeg",3)
+                drawBone("LeftUpperLeg","LeftLowerLeg",4)
+                drawBone("LeftLowerLeg","LeftFoot",5)
+                drawBone("LowerTorso","RightUpperLeg",6)
+                drawBone("RightUpperLeg","RightLowerLeg",7)
+                drawBone("RightLowerLeg","RightFoot",8)
+                drawBone("UpperTorso","LeftUpperArm",9)
+                drawBone("LeftUpperArm","LeftLowerArm",10)
+                drawBone("LeftLowerArm","LeftHand",11)
+                drawBone("UpperTorso","RightUpperArm",12)
+                drawBone("RightUpperArm","RightLowerArm",13)
+                drawBone("RightLowerArm","RightHand",14)
             end
 
-            if onScreen and options.distance then
-                local dist = (LocalPlayer.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
-                esp.dist.Text = string.format("%.1fm", dist)
-                esp.dist.Position = Vector2.new(pos.X, pos.Y + 80)
-                esp.dist.Font = availableFonts[options.font]
-                esp.dist.Visible = true
+            -- Name & Distance
+            data.name.Font = availableFonts[options.font] or 0
+            data.dist.Font = data.name.Font
+            if options.name and onScreen then
+                data.name.Text = player.Name
+                data.name.Position = Vector2.new(pos3.X + options.offsetX, pos3.Y - (data.box.Size and data.box.Size.Y/2 or 40) - 12 + options.offsetY)
+                data.name.Color = color
+                data.name.Visible = true
             else
-                esp.dist.Visible = false
+                data.name.Visible = false
             end
+            if options.distance and onScreen then
+                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local dist = root and (root.Position - hrp.Position).Magnitude or 0
+                data.dist.Text = string.format("%.1f m", dist)
+                data.dist.Position = Vector2.new(pos3.X + options.offsetX, pos3.Y + (data.box.Size and data.box.Size.Y/2 or 40) + 12 + options.offsetY)
+                data.dist.Color = Color3.fromRGB(220,220,220)
+                data.dist.Visible = true
+            else
+                data.dist.Visible = false
+            end
+        else
+            if ESP_TABLE[player] then cleanupESP(player) end
         end
     end
 end)
 
--- AIMBOT BÁSICO
-local function getClosestPlayer()
-    local closest, distance = nil, options.fov
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild(options.targetPart) then
-            if options.teamCheck and player.Team == LocalPlayer.Team then continue end
-            local pos, onScreen = Camera:WorldToViewportPoint(player.Character[options.targetPart].Position)
+--// INTEGRAÇÃO DO AIMBOT V2 (carrega e integra opções no painel)
+-- Usamos pcall + getgenv guard para evitar recarregar e travar
+local function safeLoadAimbotV2()
+    local ok, err = pcall(function()
+        -- Checar carregamento prévio
+        if getgenv and getgenv().Aimbot then
+            return
+        end
+        -- Carregar script remoto
+        local raw = game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
+        if raw and raw ~= "" then
+            local f = loadstring(raw)
+            if f then f() end
+        end
+    end)
+    if not ok then
+        warn("Falha ao carregar Aimbot V2:", err)
+    end
+end
+
+-- Carrega Aimbot V2 ao iniciar (mas protegido)
+safeLoadAimbotV2()
+
+-- Se Aimbot carregou, integramos o Settings/FOVSettings/Functions na UI (se existir)
+local function integrateAimbotUI()
+    if not (getgenv and getgenv().Aimbot) then
+        -- não carregado; tentamos novamente mas não bloqueamos
+        return
+    end
+    local Aimbot = getgenv().Aimbot
+    if not Aimbot then return end
+    local Settings, FOVSettings, Functions = Aimbot.Settings, Aimbot.FOVSettings, Aimbot.Functions
+    -- Tentar carregar Pepsi UI Library (obj remoto) e criar janela integrada ao painel Aimbot
+    local ok, Library = pcall(function()
+        local obj = game:GetObjects("rbxassetid://7657867786")[1]
+        if obj and obj.Source then
+            return loadstring(obj.Source)()
+        end
+    end)
+    if not ok or not Library then
+        -- Falhou em carregar a Library remota — saímos.
+        return
+    end
+
+    -- Criar janela do Aimbot usando a Library, mas manter nome integrado
+    local success, MainFrameLib = pcall(function()
+        Library.UnloadCallback = Functions.Exit
+        local win = Library:CreateWindow({
+            Name = "Aimbot e ESP feito por Ryan", -- nome final conforme pedido
+            Themeable = {
+                Image = "7059346386",
+                Info = "Made by Exunys\nPowered by Pepsi's UI Library",
+                Credit = false
+            },
+            Background = "",
+            Theme = [[{"__Designer.Colors.section":"ADC7FF","__Designer.Colors.topGradient":"1B242F","__Designer.Settings.ShowHideKey":"Enum.KeyCode.RShift","__Designer.Colors.otherElementText":"54637D","__Designer.Colors.hoveredOptionBottom":"38667D","__Designer.Colors.unhoveredOptionTop":"407495","__Designer.Colors.innerBorder":"2C4168","__Designer.Colors.unselectedOption":"4E6EA0","__Designer.Background.UseBackgroundImage":true,"__Designer.Files.WorkspaceFile":"Aimbot V2","__Designer.Colors.main":"23A0FF","__Designer.Colors.outerBorder":"162943","__Designer.Background.ImageColor":"FFFFFF","__Designer.Colors.tabText":"C9DFF1","__Designer.Colors.elementBorder":"111D26","__Designer.Colors.sectionBackground":"0E141C","__Designer.Colors.selectedOption":"558AC2","__Designer.Colors.background":"11182A","__Designer.Colors.bottomGradient":"202B42","__Designer.Background.ImageTransparency":95,"__Designer.Colors.hoveredOptionTop":"4885A0","__Designer.Colors.elementText":"7692B8","__Designer.Colors.unhoveredOptionBottom":"5471C4"}]]
+        })
+        -- Tabs
+        local SettingsTab = win:CreateTab({ Name = "Settings" })
+        local FOVSettingsTab = win:CreateTab({ Name = "FOV Settings" })
+        local FunctionsTab = win:CreateTab({ Name = "Functions" })
+
+        -- Sections
+        local Values = SettingsTab:CreateSection({ Name = "Values" })
+        local Checks = SettingsTab:CreateSection({ Name = "Checks" })
+        local ThirdPerson = SettingsTab:CreateSection({ Name = "Third Person Mode?" })
+
+        local FOV_Values = FOVSettingsTab:CreateSection({ Name = "Values" })
+        local FOV_Appearance = FOVSettingsTab:CreateSection({ Name = "Appearance" })
+
+        local FunctionsSection = FunctionsTab:CreateSection({ Name = "Functions" })
+
+        -- Populate values with Aimbot.Settings refs (if available) using safe callbacks
+        if Settings then
+            Values:AddToggle({ Name = "Enabled", Value = Settings.Enabled, Callback = function(New) Settings.Enabled = New end }).Default = Settings.Enabled
+            Values:AddToggle({ Name = "Toggle", Value = Settings.Toggle, Callback = function(New) Settings.Toggle = New end }).Default = Settings.Toggle
+
+            Settings.LockPart = Settings.LockPart or partsList[1]
+            Values:AddDropdown({
+                Name = "Lock Part",
+                Value = Settings.LockPart,
+                Callback = function(New) Settings.LockPart = New end,
+                List = partsList,
+                Nothing = "Head"
+            }).Default = Settings.LockPart
+
+            Values:AddTextbox({ Name = "Hotkey", Value = Settings.TriggerKey or "", Callback = function(New) Settings.TriggerKey = New end }).Default = Settings.TriggerKey or ""
+
+            Values:AddSlider({ Name = "Sensitivity", Value = Settings.Sensitivity or 0.5, Callback = function(New) Settings.Sensitivity = New end, Min = 0, Max = 1, Decimals = 2 }).Default = Settings.Sensitivity or 0.5
+        end
+
+        if Settings then
+            Checks:AddToggle({ Name = "Team Check", Value = Settings.TeamCheck or false, Callback = function(New) Settings.TeamCheck = New end }).Default = Settings.TeamCheck or false
+            Checks:AddToggle({ Name = "Wall Check", Value = Settings.WallCheck or false, Callback = function(New) Settings.WallCheck = New end }).Default = Settings.WallCheck or false
+            Checks:AddToggle({ Name = "Alive Check", Value = Settings.AliveCheck or false, Callback = function(New) Settings.AliveCheck = New end }).Default = Settings.AliveCheck or false
+        end
+
+        if Settings then
+            ThirdPerson:AddToggle({ Name = "Enable Third Person", Value = Settings.ThirdPerson or false, Callback = function(New) Settings.ThirdPerson = New end }).Default = Settings.ThirdPerson or false
+            ThirdPerson:AddSlider({ Name = "Sensitivity", Value = Settings.ThirdPersonSensitivity or 1, Callback = function(New) Settings.ThirdPersonSensitivity = New end, Min = 0.1, Max = 5, Decimals = 1 }).Default = Settings.ThirdPersonSensitivity or 1
+        end
+
+        if FOVSettings then
+            FOV_Values:AddToggle({ Name = "Enabled", Value = FOVSettings.Enabled or false, Callback = function(New) FOVSettings.Enabled = New end }).Default = FOVSettings.Enabled or false
+            FOV_Values:AddToggle({ Name = "Visible", Value = FOVSettings.Visible or false, Callback = function(New) FOVSettings.Visible = New end }).Default = FOVSettings.Visible or false
+            FOV_Values:AddSlider({ Name = "Amount", Value = FOVSettings.Amount or 100, Callback = function(New) FOVSettings.Amount = New end, Min = 10, Max = 300 }).Default = FOVSettings.Amount or 100
+
+            FOV_Appearance:AddToggle({ Name = "Filled", Value = FOVSettings.Filled or false, Callback = function(New) FOVSettings.Filled = New end }).Default = FOVSettings.Filled or false
+            FOV_Appearance:AddSlider({ Name = "Transparency", Value = FOVSettings.Transparency or 0.5, Callback = function(New) FOVSettings.Transparency = New end, Min = 0, Max = 1, Decimal = 1 }).Default = FOVSettings.Transparency or 0.5
+            FOV_Appearance:AddSlider({ Name = "Sides", Value = FOVSettings.Sides or 32, Callback = function(New) FOVSettings.Sides = New end, Min = 3, Max = 60 }).Default = FOVSettings.Sides or 32
+            FOV_Appearance:AddSlider({ Name = "Thickness", Value = FOVSettings.Thickness or 2, Callback = function(New) FOVSettings.Thickness = New end, Min = 1, Max = 50 }).Default = FOVSettings.Thickness or 2
+            FOV_Appearance:AddColorpicker({ Name = "Color", Value = FOVSettings.Color or Color3.fromRGB(255,255,255), Callback = function(New) FOVSettings.Color = New end }).Default = FOVSettings.Color or Color3.fromRGB(255,255,255)
+            FOV_Appearance:AddColorpicker({ Name = "Locked Color", Value = FOVSettings.LockedColor or Color3.fromRGB(255,0,0), Callback = function(New) FOVSettings.LockedColor = New end }).Default = FOVSettings.LockedColor or Color3.fromRGB(255,0,0)
+        end
+
+        if Functions then
+            FunctionsSection:AddButton({ Name = "Reset Settings", Callback = function() Functions.ResetSettings(); Library.ResetAll() end })
+            FunctionsSection:AddButton({ Name = "Restart", Callback = Functions.Restart })
+            FunctionsSection:AddButton({ Name = "Exit", Callback = function() Functions:Exit(); Library.Unload() end })
+            FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() setclipboard("https://github.com/Exunys/Aimbot-V2") end })
+        end
+
+        return win
+    end)
+end
+
+-- Tenta integrar se o Aimbot já carregou (se não, a função safeLoadAimbotV2 já tentou)
+integrateAimbotUI()
+
+--// AIMBOT LOCAL (fallback simples, usa options.* quando Aimbot remoto não existir)
+-- Um aimbot simples que move o mouse para o jogador mais próximo no FOV (usa mousemoverel se disponível)
+local function getClosestPlayerLocal()
+    local closest, bestDist = nil, options.fov
+    for _,pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild(options.targetPart) then
+            if options.teamCheck and pl.Team == LocalPlayer.Team then continue end
+            local ppos, onScreen = Camera:WorldToViewportPoint(pl.Character[options.targetPart].Position)
             if onScreen then
-                local diff = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
-                if diff < distance then
-                    distance = diff
-                    closest = player
+                local diff = (Vector2.new(ppos.X, ppos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                if diff < bestDist then
+                    bestDist = diff
+                    closest = pl
                 end
             end
         end
@@ -257,10 +521,18 @@ end
 
 RunService.RenderStepped:Connect(function()
     if not options.aimbotEnabled then return end
-    local target = getClosestPlayer()
-    if target then
-        local targetPos = Camera:WorldToViewportPoint(target.Character[options.targetPart].Position)
-        mousemoverel((targetPos.X - UserInputService:GetMouseLocation().X) * options.sensitivity,
-                     (targetPos.Y - UserInputService:GetMouseLocation().Y) * options.sensitivity)
+    local target = getClosestPlayerLocal()
+    if target and target.Character and target.Character:FindFirstChild(options.targetPart) then
+        local tp = Camera:WorldToViewportPoint(target.Character[options.targetPart].Position)
+        -- move mouse relatively (many executors provide mousemoverel)
+        local success, mm = pcall(function() return mousemoverel end)
+        if success and mousemoverel then
+            local deltaX = (tp.X - UserInputService:GetMouseLocation().X) * options.sensitivity
+            local deltaY = (tp.Y - UserInputService:GetMouseLocation().Y) * options.sensitivity
+            pcall(function() mousemoverel(deltaX, deltaY) end)
+        end
     end
 end)
+
+-- Fim do script
+print("Aimbot e ESP feito por Ryan inicializado.")
