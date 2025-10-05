@@ -6,24 +6,35 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
---// MENU
+--// VARIÁVEIS E OPÇÕES
 local menuVisible = false
 local options = {
     box = true,
     skeleton = true,
     rgb = true,
+    name = true,
+    distance = true,
+    fixedColor = Color3.fromRGB(255, 0, 0),
+    font = "UI",
 }
 
---// GUI do MENU
+local availableFonts = {
+    UI = 0,
+    System = 1,
+    Plex = 2,
+    Monospace = 3,
+    Cartoon = 4,
+}
+
+--// MENU (tecla L)
 local function createMenu()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "ESP_Menu"
-    -- parent costuma ser CoreGui em ambientes de exploit
     screenGui.Parent = game.CoreGui
 
     local frame = Instance.new("Frame", screenGui)
     frame.Position = UDim2.new(0, 20, 0, 100)
-    frame.Size = UDim2.new(0, 180, 0, 130)
+    frame.Size = UDim2.new(0, 190, 0, 220)
     frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     frame.BorderSizePixel = 0
     frame.Visible = menuVisible
@@ -31,28 +42,57 @@ local function createMenu()
     local function createToggle(name, y, default)
         local toggle = Instance.new("TextButton", frame)
         toggle.Position = UDim2.new(0, 10, 0, y)
-        toggle.Size = UDim2.new(0, 160, 0, 30)
+        toggle.Size = UDim2.new(0, 160, 0, 24)
         toggle.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
         toggle.TextColor3 = Color3.new(1, 1, 1)
         toggle.Text = name .. ": " .. (default and "ON" or "OFF")
         toggle.TextSize = 14
-
         toggle.MouseButton1Click:Connect(function()
             options[name:lower()] = not options[name:lower()]
             toggle.Text = name .. ": " .. (options[name:lower()] and "ON" or "OFF")
         end)
     end
 
-    createToggle("Box", 10, options.box)
-    createToggle("Skeleton", 50, options.skeleton)
-    createToggle("RGB", 90, options.rgb)
+    createToggle("Box", 8, options.box)
+    createToggle("Skeleton", 36, options.skeleton)
+    createToggle("RGB", 64, options.rgb)
+    createToggle("Name", 92, options.name)
+    createToggle("Distance", 120, options.distance)
+
+    local colorButton = Instance.new("TextButton", frame)
+    colorButton.Position = UDim2.new(0, 10, 0, 148)
+    colorButton.Size = UDim2.new(0, 160, 0, 24)
+    colorButton.BackgroundColor3 = options.fixedColor
+    colorButton.Text = "Cor fixa"
+    colorButton.TextColor3 = Color3.new(1, 1, 1)
+    colorButton.MouseButton1Click:Connect(function()
+        local r, g, b = math.random(0, 255), math.random(0, 255), math.random(0, 255)
+        options.fixedColor = Color3.fromRGB(r, g, b)
+        colorButton.BackgroundColor3 = options.fixedColor
+    end)
+
+    local fontButton = Instance.new("TextButton", frame)
+    fontButton.Position = UDim2.new(0, 10, 0, 176)
+    fontButton.Size = UDim2.new(0, 160, 0, 24)
+    fontButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    fontButton.Text = "Fonte: " .. options.font
+    fontButton.TextColor3 = Color3.new(1, 1, 1)
+
+    local fontList = {"UI", "System", "Plex", "Monospace", "Cartoon"}
+    local currentFontIndex = 1
+
+    fontButton.MouseButton1Click:Connect(function()
+        currentFontIndex = currentFontIndex % #fontList + 1
+        options.font = fontList[currentFontIndex]
+        fontButton.Text = "Fonte: " .. options.font
+    end)
 
     return frame
 end
 
 local menu = createMenu()
 
--- Alternar menu com a tecla L
+-- Alternar menu com tecla L
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.L then
@@ -61,314 +101,118 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
---// FUNÇÕES AUXILIARES
-
--- Criar Drawing Box
+--// DRAWING UTILITIES
 local function createBox()
-    local box = Drawing.new("Square")
-    box.Thickness = 1
-    box.Transparency = 1
-    box.Filled = false
-    box.Visible = false
-    return box
+    local b = Drawing.new("Square")
+    b.Thickness = 1
+    b.Transparency = 1
+    b.Filled = false
+    b.Color = Color3.fromRGB(255, 0, 0)
+    b.Visible = false
+    return b
 end
 
--- Criar Line para Skeleton
 local function createLine()
-    local line = Drawing.new("Line")
-    line.Thickness = 1
-    line.Transparency = 1
-    line.Visible = false
-    return line
+    local l = Drawing.new("Line")
+    l.Thickness = 1
+    l.Transparency = 1
+    l.Color = Color3.fromRGB(255, 0, 0)
+    l.Visible = false
+    return l
 end
 
--- Função para gerar RGB dinâmico
+local function createText()
+    local t = Drawing.new("Text")
+    t.Size = 14
+    t.Color = Color3.fromRGB(255, 255, 255)
+    t.Center = true
+    t.Outline = true
+    t.Visible = false
+    t.Font = 0
+    return t
+end
+
 local function getRGBColor()
     local t = tick() * 2
     return Color3.fromHSV(t % 1, 1, 1)
 end
 
---// TABELA DE ESPS
+--// ESP TABLE
 local ESP = {}
 
--- Função para limpar desenhos de um jogador
 local function cleanupPlayerESP(player)
     local data = ESP[player]
     if data then
-        if data.box and data.box.Remove then
-            pcall(function() data.box:Remove() end)
-        end
-        if data.lines then
-            for _, l in ipairs(data.lines) do
-                if l and l.Remove then
-                    pcall(function() l:Remove() end)
-                end
+        for _, obj in pairs(data) do
+            if typeof(obj) == "table" then
+                for _, sub in ipairs(obj) do pcall(function() sub:Remove() end) end
+            else
+                pcall(function() obj:Remove() end)
             end
         end
         ESP[player] = nil
     end
 end
 
--- Limpar ESP quando jogador sai
-Players.PlayerRemoving:Connect(function(player)
-    cleanupPlayerESP(player)
-end)
+Players.PlayerRemoving:Connect(cleanupPlayerESP)
 
---// ATUALIZAR ESPS
+--// ATUALIZAÇÃO DO ESP
 RunService.RenderStepped:Connect(function()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             if not ESP[player] then
-                -- Criar estrutura de ESP
                 ESP[player] = {
                     box = createBox(),
-                    lines = {}, -- Skeleton lines
+                    lines = {},
+                    nameText = createText(),
+                    distText = createText(),
                 }
-                for i = 1, 15 do
-                    table.insert(ESP[player].lines, createLine())
-                end
+                for i = 1, 15 do table.insert(ESP[player].lines, createLine()) end
             end
 
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local data = ESP[player]
+            local hrp = player.Character.HumanoidRootPart
             local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            local pos3, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            local color = options.rgb and getRGBColor() or options.fixedColor
 
-            if hrp and humanoid then
-                local pos3, onscreen = Camera:WorldToViewportPoint(hrp.Position)
-                -- pos3 é Vector3 com X,Y na viewport; onscreen é boolean (visibilidade)
-                local color = options.rgb and getRGBColor() or Color3.fromRGB(255, 0, 0)
+            -- CAIXA
+            if options.box and onScreen then
+                local height = 2500 / pos3.Z
+                local width = height / 2
+                data.box.Position = Vector2.new(pos3.X - width / 2, pos3.Y - height / 2)
+                data.box.Size = Vector2.new(width, height)
+                data.box.Color = color
+                data.box.Visible = true
+            else
+                data.box.Visible = false
+            end
 
-                -- tentativa de ler BodyHeightScale com fallback
-                local bodyHeightScale = 1
-                local bodyScaleObj = humanoid:FindFirstChild("BodyHeightScale")
-                if bodyScaleObj and bodyScaleObj:IsA("NumberValue") then
-                    bodyHeightScale = bodyScaleObj.Value or 1
-                elseif humanoid.BodyHeightScale then
-                    -- em alguns modelos BodyHeightScale pode ser uma propriedade numérica direta
-                    local ok, val = pcall(function() return humanoid.BodyHeightScale end)
-                    if ok and type(val) == "number" then
-                        bodyHeightScale = val
-                    end
-                end
+            -- NOME E DISTÂNCIA
+            data.nameText.Font = availableFonts[options.font] or 0
+            data.distText.Font = availableFonts[options.font] or 0
 
-                -- BOX
-                if options.box and onscreen then
-                    -- cálculo de tamanho mais robusto: usa HipHeight e bodyHeightScale com limites
-                    local hip = humanoid.HipHeight or 2
-                    local size = hip + (bodyHeightScale * 6)
-                    local height = math.clamp(size * 10, 2, 300)
-                    local width = math.clamp(height / 2, 2, 300)
-                    ESP[player].box.Position = Vector2.new(pos3.X - width / 2, pos3.Y - height / 2)
-                    ESP[player].box.Size = Vector2.new(width, height)
-                    ESP[player].box.Color = color
-                    ESP[player].box.Visible = true
-                else
-                    ESP[player].box.Visible = false
-                end
+            if options.name and onScreen then
+                data.nameText.Text = player.Name
+                data.nameText.Position = Vector2.new(pos3.X, pos3.Y - (data.box.Size.Y / 2) - 14)
+                data.nameText.Color = color
+                data.nameText.Visible = true
+            else
+                data.nameText.Visible = false
+            end
 
-                -- SKELETON
-                for _, line in ipairs(ESP[player].lines) do
-                    line.Visible = false
-                end
-
-                if options.skeleton then
-                    local function drawBone(from, to, index)
-                        local part1 = player.Character:FindFirstChild(from)
-                        local part2 = player.Character:FindFirstChild(to)
-                        if part1 and part2 then
-                            local p1, on1 = Camera:WorldToViewportPoint(part1.Position)
-                            local p2, on2 = Camera:WorldToViewportPoint(part2.Position)
-                            if on1 and on2 then
-                                local line = ESP[player].lines[index]
-                                if line then
-                                    line.From = Vector2.new(p1.X, p1.Y)
-                                    line.To = Vector2.new(p2.X, p2.Y)
-                                    line.Color = color
-                                    line.Visible = true
-                                end
-                            end
-                        end
-                    end
-
-                    -- Ajuste das conexões de ossos; indices devem existir
-                    drawBone("Head", "UpperTorso", 1)
-                    drawBone("UpperTorso", "LowerTorso", 2)
-                    drawBone("LowerTorso", "LeftUpperLeg", 3)
-                    drawBone("LeftUpperLeg", "LeftLowerLeg", 4)
-                    drawBone("LeftLowerLeg", "LeftFoot", 5)
-                    drawBone("LowerTorso", "RightUpperLeg", 6)
-                    drawBone("RightUpperLeg", "RightLowerLeg", 7)
-                    drawBone("RightLowerLeg", "RightFoot", 8)
-                    drawBone("UpperTorso", "LeftUpperArm", 9)
-                    drawBone("LeftUpperArm", "LeftLowerArm", 10)
-                    drawBone("LeftLowerArm", "LeftHand", 11)
-                    drawBone("UpperTorso", "RightUpperArm", 12)
-                    drawBone("RightUpperArm", "RightLowerArm", 13)
-                    drawBone("RightLowerArm", "RightHand", 14)
-                end
+            if options.distance and onScreen then
+                local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local dist = root and (root.Position - hrp.Position).Magnitude or 0
+                data.distText.Text = string.format("%.1f m", dist)
+                data.distText.Position = Vector2.new(pos3.X, pos3.Y + (data.box.Size.Y / 2) + 14)
+                data.distText.Color = Color3.fromRGB(200, 200, 200)
+                data.distText.Visible = true
+            else
+                data.distText.Visible = false
             end
         else
-            -- se jogador não tem character ou é o localplayer, limpar possíveis desenhos deixados
-            if ESP[player] then
-                cleanupPlayerESP(player)
-            end
+            if ESP[player] then cleanupPlayerESP(player) end
         end
     end
-end) -- fim do RenderStepped Connect
-
---// Cache / Loader (Aimbot)
--- Nota: use com cautela — carregamento externo via HttpGet; envolvi em pcall para evitar crash
-local loadstring = loadstring
-local getgenv = getgenv
-local setclipboard = setclipboard
-
---// Loaded check
-if getgenv and getgenv().Aimbot then
-    -- já carregado; evita recarregar
-else
-    -- tentar carregar Aimbot V2 remotamente (pcall para segurança)
-    local ok, err = pcall(function()
-        local raw = game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
-        if raw and raw ~= "" then
-            local f = loadstring(raw)
-            if f then f() end
-        end
-    end)
-    if not ok then
-        warn("Falha ao carregar Aimbot V2:", err)
-    end
-end
-
---// Se Aimbot foi carregado, inicializar UI (também em pcall)
-local Aimbot = (getgenv and getgenv().Aimbot) or nil
-if Aimbot then
-    local Settings, FOVSettings, Functions = Aimbot.Settings, Aimbot.FOVSettings, Aimbot.Functions
-    local success, Library = pcall(function()
-        local obj = game:GetObjects("rbxassetid://7657867786")[1]
-        if obj and obj.Source then
-            return loadstring(obj.Source)()
-        end
-    end)
-    if success and Library then
-        -- Frame / Tabs / Sections (mantive sua lógica original)
-        Library.UnloadCallback = Functions.Exit
-
-        local MainFrame = Library:CreateWindow({
-            Name = "Aimbot V2",
-            Themeable = {
-                Image = "7059346386",
-                Info = "Made by Exunys\nPowered by Pepsi's UI Library",
-                Credit = false
-            },
-            Background = "",
-            Theme = [[{"__Designer.Colors.section":"ADC7FF","__Designer.Colors.topGradient":"1B242F","__Designer.Settings.ShowHideKey":"Enum.KeyCode.RShift","__Designer.Colors.otherElementText":"54637D","__Designer.Colors.hoveredOptionBottom":"38667D","__Designer.Colors.unhoveredOptionTop":"407495","__Designer.Colors.innerBorder":"2C4168","__Designer.Colors.unselectedOption":"4E6EA0","__Designer.Background.ImageAssetID":"","__Designer.Colors.main":"23A0FF","__Designer.Colors.outerBorder":"162943","__Designer.Background.ImageColor":"FFFFFF","__Designer.Colors.tabText":"C9DFF1","__Designer.Colors.elementBorder":"111D26","__Designer.Colors.sectionBackground":"0E141C","__Designer.Colors.selectedOption":"558AC2","__Designer.Colors.background":"11182A","__Designer.Colors.bottomGradient":"202B42","__Designer.Background.ImageTransparency":95,"__Designer.Colors.hoveredOptionTop":"4885A0","__Designer.Colors.elementText":"7692B8","__Designer.Colors.unhoveredOptionBottom":"5471C4"}]]
-        })
-
-        -- Tabs
-        local SettingsTab = MainFrame:CreateTab({ Name = "Settings" })
-        local FOVSettingsTab = MainFrame:CreateTab({ Name = "FOV Settings" })
-        local FunctionsTab = MainFrame:CreateTab({ Name = "Functions" })
-
-        -- Sections
-        local Values = SettingsTab:CreateSection({ Name = "Values" })
-        local Checks = SettingsTab:CreateSection({ Name = "Checks" })
-        local ThirdPerson = SettingsTab:CreateSection({ Name = "Third Person Mode?" })
-
-        local FOV_Values = FOVSettingsTab:CreateSection({ Name = "Values" })
-        local FOV_Appearance = FOVSettingsTab:CreateSection({ Name = "Appearance" })
-
-        local FunctionsSection = FunctionsTab:CreateSection({ Name = "Functions" })
-
-        -- Parts list (mantido)
-        local Parts = {"Head", "HumanoidRootPart", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg", "LeftHand", "RightHand", "LeftLowerArm", "RightLowerArm", "LeftUpperArm", "RightUpperArm", "LeftFoot", "LeftLowerLeg", "UpperTorso", "LeftUpperLeg", "RightFoot", "RightLowerLeg", "LowerTorso", "RightUpperLeg"}
-
-        -- Settings / Values
-        Values:AddToggle({
-            Name = "Enabled",
-            Value = Settings.Enabled,
-            Callback = function(New) Settings.Enabled = New end
-        }).Default = Settings.Enabled
-
-        Values:AddToggle({
-            Name = "Toggle",
-            Value = Settings.Toggle,
-            Callback = function(New) Settings.Toggle = New end
-        }).Default = Settings.Toggle
-
-        Settings.LockPart = Parts[1]; Values:AddDropdown({
-            Name = "Lock Part",
-            Value = Parts[1],
-            Callback = function(New) Settings.LockPart = New end,
-            List = Parts,
-            Nothing = "Head"
-        }).Default = Parts[1]
-
-        Values:AddTextbox({
-            Name = "Hotkey",
-            Value = Settings.TriggerKey,
-            Callback = function(New) Settings.TriggerKey = New end
-        }).Default = Settings.TriggerKey
-
-        Values:AddSlider({
-            Name = "Sensitivity",
-            Value = Settings.Sensitivity,
-            Callback = function(New) Settings.Sensitivity = New end,
-            Min = 0,
-            Max = 1,
-            Decimals = 2
-        }).Default = Settings.Sensitivity
-
-        -- Checks
-        Checks:AddToggle({
-            Name = "Team Check",
-            Value = Settings.TeamCheck,
-            Callback = function(New) Settings.TeamCheck = New end
-        }).Default = Settings.TeamCheck
-
-        Checks:AddToggle({
-            Name = "Wall Check",
-            Value = Settings.WallCheck,
-            Callback = function(New) Settings.WallCheck = New end
-        }).Default = Settings.WallCheck
-
-        Checks:AddToggle({
-            Name = "Alive Check",
-            Value = Settings.AliveCheck,
-            Callback = function(New) Settings.AliveCheck = New end
-        }).Default = Settings.AliveCheck
-
-        -- ThirdPerson
-        ThirdPerson:AddToggle({
-            Name = "Enable Third Person",
-            Value = Settings.ThirdPerson,
-            Callback = function(New) Settings.ThirdPerson = New end
-        }).Default = Settings.ThirdPerson
-
-        ThirdPerson:AddSlider({
-            Name = "Sensitivity",
-            Value = Settings.ThirdPersonSensitivity,
-            Callback = function(New) Settings.ThirdPersonSensitivity = New end,
-            Min = 0.1,
-            Max = 5,
-            Decimals = 1
-        }).Default = Settings.ThirdPersonSensitivity
-
-        -- FOV Values
-        FOV_Values:AddToggle({ Name = "Enabled", Value = FOVSettings.Enabled, Callback = function(New) FOVSettings.Enabled = New end }).Default = FOVSettings.Enabled
-        FOV_Values:AddToggle({ Name = "Visible", Value = FOVSettings.Visible, Callback = function(New) FOVSettings.Visible = New end }).Default = FOVSettings.Visible
-        FOV_Values:AddSlider({ Name = "Amount", Value = FOVSettings.Amount, Callback = function(New) FOVSettings.Amount = New end, Min = 10, Max = 300 }).Default = FOVSettings.Amount
-
-        -- FOV Appearance
-        FOV_Appearance:AddToggle({ Name = "Filled", Value = FOVSettings.Filled, Callback = function(New) FOVSettings.Filled = New end }).Default = FOVSettings.Filled
-        FOV_Appearance:AddSlider({ Name = "Transparency", Value = FOVSettings.Transparency, Callback = function(New) FOVSettings.Transparency = New end, Min = 0, Max = 1, Decimal = 1 }).Default = FOVSettings.Transparency
-        FOV_Appearance:AddSlider({ Name = "Sides", Value = FOVSettings.Sides, Callback = function(New) FOVSettings.Sides = New end, Min = 3, Max = 60 }).Default = FOVSettings.Sides
-        FOV_Appearance:AddSlider({ Name = "Thickness", Value = FOVSettings.Thickness, Callback = function(New) FOVSettings.Thickness = New end, Min = 1, Max = 50 }).Default = FOVSettings.Thickness
-        FOV_Appearance:AddColorpicker({ Name = "Color", Value = FOVSettings.Color, Callback = function(New) FOVSettings.Color = New end }).Default = FOVSettings.Color
-        FOV_Appearance:AddColorpicker({ Name = "Locked Color", Value = FOVSettings.LockedColor, Callback = function(New) FOVSettings.LockedColor = New end }).Default = FOVSettings.LockedColor
-
-        -- Functions
-        FunctionsSection:AddButton({ Name = "Reset Settings", Callback = function() Functions.ResetSettings(); Library.ResetAll() end })
-        FunctionsSection:AddButton({ Name = "Restart", Callback = Functions.Restart })
-        FunctionsSection:AddButton({ Name = "Exit", Callback = function() Functions:Exit(); Library.Unload() end })
-        FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() setclipboard("https://github.com/Exunys/Aimbot-V2") end })
-    end
-end
+end)
