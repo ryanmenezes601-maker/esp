@@ -1,5 +1,5 @@
--- Aimbot e ESP feito por Ryan (com FOV circle + RGB sliders)
--- Integra ESP Settings na UI do Aimbot V2 (Pepsi UI)
+-- Aimbot e ESP feito por Ryan (Pepsi UI)
+-- FOV Circle + ESP RGB sliders, tudo em um único menu
 
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
@@ -7,19 +7,23 @@ local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
+-- Opções compartilhadas
 local options = {
+    -- ESP
     box = true,
     skeleton = true,
     rgb = true,
     name = true,
     distance = true,
-    fixedColor = Color3.fromRGB(255,0,0),
     font = "UI",
     offsetX = 0,
     offsetY = 0,
     fixedR = 255,
     fixedG = 0,
     fixedB = 0,
+    fixedColor = Color3.fromRGB(255,0,0),
+
+    -- Aimbot
     aimbotEnabled = false,
     toggle = false,
     sensitivity = 0.5,
@@ -29,23 +33,23 @@ local options = {
 }
 
 options.fixedColor = Color3.fromRGB(options.fixedR, options.fixedG, options.fixedB)
+local availableFonts = { UI=0, System=1, Plex=2, Monospace=3, Cartoon=4 }
+local partsList = {"Head","HumanoidRootPart","UpperTorso","LowerTorso","Torso"}
 
-local availableFonts = { UI = 0, System = 1, Plex = 2, Monospace = 3, Cartoon = 4 }
-local partsList = { "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso" }
-
+-- Função RGB dinâmica para ESP
 local function getRGBColor()
     return Color3.fromHSV(tick()*2 % 1,1,1)
 end
 
-local successDrawing, DrawingAPI = pcall(function() return Drawing end)
-if not successDrawing then warn("Drawing API não disponível. ESP não funcionará.") end
-
+-- Drawing API (ESP)
+local successDrawing = pcall(function() return Drawing end)
+if not successDrawing then warn("Drawing API não disponível.") end
 local ESP_TABLE = {}
 
-local function makeBox() if not Drawing then return end local b = Drawing.new("Square") b.Thickness = 1 b.Filled = false b.Visible = false b.Transparency = 1 return b end
-local function makeLine() if not Drawing then return end local l = Drawing.new("Line") l.Thickness = 1 l.Visible = false l.Transparency = 1 return l end
-local function makeText() if not Drawing then return end local t = Drawing.new("Text") t.Size = 14 t.Color = Color3.fromRGB(255,255,255) t.Center = true t.Outline = true t.Visible = false t.Font = availableFonts[options.font] or 0 return t end
-local function makeCircle() if not Drawing then return end local c = Drawing.new("Circle") c.Radius = options.fov or 150 c.Filled = false c.Visible = false c.Transparency = 1 c.Thickness = 2 c.Position = Vector2.new(0,0) c.Color = options.fixedColor return c end
+local function makeBox() if not Drawing then return end local b=Drawing.new("Square") b.Thickness=1 b.Filled=false b.Visible=false b.Transparency=1 return b end
+local function makeLine() if not Drawing then return end local l=Drawing.new("Line") l.Thickness=1 l.Visible=false l.Transparency=1 return l end
+local function makeText() if not Drawing then return end local t=Drawing.new("Text") t.Size=14 t.Color=Color3.fromRGB(255,255,255) t.Center=true t.Outline=true t.Visible=false t.Font=availableFonts[options.font] or 0 return t end
+local function makeCircle() if not Drawing then return end local c=Drawing.new("Circle") c.Radius=options.fov c.Filled=false c.Visible=false c.Transparency=1 c.Thickness=2 c.Position=Vector2.new(0,0) c.Color=options.fixedColor return c end
 
 local fovCircle = Drawing and makeCircle()
 
@@ -56,74 +60,76 @@ local function cleanupESP(player)
         if d.name and d.name.Remove then pcall(function() d.name:Remove() end) end
         if d.dist and d.dist.Remove then pcall(function() d.dist:Remove() end) end
         if d.lines then for _,ln in ipairs(d.lines) do if ln and ln.Remove then pcall(function() ln:Remove() end) end end end
-        ESP_TABLE[player] = nil
+        ESP_TABLE[player]=nil
     end
 end
-
 Players.PlayerRemoving:Connect(cleanupESP)
 
+-- Render loop ESP e FOV
 if Drawing then
     RunService.RenderStepped:Connect(function()
         local Aimbot = (getgenv and getgenv().Aimbot) or nil
-        local useAmount, useVisible, useColor, useThickness, useFilled = nil,nil,nil,nil,nil
+        local useAmount,useVisible,useColor,useThickness,useFilled
         if Aimbot and Aimbot.FOVSettings then
             local fs = Aimbot.FOVSettings
-            useAmount = fs.Amount or options.fov
-            useVisible = fs.Visible or false
-            useColor = fs.Color or options.fixedColor
-            useThickness = fs.Thickness or 2
-            useFilled = fs.Filled or false
+            useAmount=fs.Amount or options.fov
+            useVisible=fs.Visible or false
+            useColor=fs.Color or options.fixedColor
+            useThickness=fs.Thickness or 2
+            useFilled=fs.Filled or false
         else
-            useAmount = options.fov
-            useVisible = options.aimbotEnabled or false
-            useColor = options.fixedColor
-            useThickness = 2
-            useFilled = false
+            useAmount=options.fov
+            useVisible=options.aimbotEnabled or false
+            useColor=options.fixedColor
+            useThickness=2
+            useFilled=false
         end
 
         if fovCircle then
             if useVisible and options.aimbotEnabled then
                 local mousePos = UserInputService:GetMouseLocation()
-                fovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+                fovCircle.Position = Vector2.new(mousePos.X,mousePos.Y)
                 fovCircle.Radius = useAmount
                 fovCircle.Thickness = useThickness
                 fovCircle.Filled = useFilled
                 fovCircle.Color = useColor
                 fovCircle.Visible = true
-            else fovCircle.Visible = false end
+            else fovCircle.Visible=false end
         end
 
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        for _,player in ipairs(Players:GetPlayers()) do
+            if player~=LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                 if not ESP_TABLE[player] then
-                    ESP_TABLE[player] = { box=makeBox(), name=makeText(), dist=makeText(), lines={} }
-                    for i=1,15 do table.insert(ESP_TABLE[player].lines, makeLine()) end
+                    ESP_TABLE[player]={ box=makeBox(), name=makeText(), dist=makeText(), lines={} }
+                    for i=1,15 do table.insert(ESP_TABLE[player].lines,makeLine()) end
                 end
-                local data = ESP_TABLE[player]
-                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                local data=ESP_TABLE[player]
+                local hrp=player.Character:FindFirstChild("HumanoidRootPart")
+                local humanoid=player.Character:FindFirstChildOfClass("Humanoid")
                 if not hrp or not humanoid then cleanupESP(player) continue end
-                local pos3, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                local pos3,onScreen = Camera:WorldToViewportPoint(hrp.Position)
                 local color = options.rgb and getRGBColor() or options.fixedColor
 
-                if options.box and onScreen and pos3.Z > 0.1 then
-                    local height = math.clamp((humanoid.HipHeight or 2)*(200/pos3.Z),10,1000)
-                    local width = math.clamp(height/2,6,600)
+                -- Box
+                if options.box and onScreen and pos3.Z>0.1 then
+                    local height=math.clamp((humanoid.HipHeight or 2)*(200/pos3.Z),10,1000)
+                    local width=math.clamp(height/2,6,600)
                     data.box.Position = Vector2.new(pos3.X-width/2+options.offsetX,pos3.Y-height/2+options.offsetY)
                     data.box.Size = Vector2.new(width,height)
                     data.box.Color = color
                     data.box.Visible = true
                 else if data.box then data.box.Visible=false end end
 
+                -- Skeleton
                 for _,ln in ipairs(data.lines) do ln.Visible=false end
                 if options.skeleton then
                     local function drawBone(a,b,index)
                         local p1,p2 = player.Character:FindFirstChild(a),player.Character:FindFirstChild(b)
                         if p1 and p2 then
-                            local p1v,on1 = Camera:WorldToViewportPoint(p1.Position)
-                            local p2v,on2 = Camera:WorldToViewportPoint(p2.Position)
+                            local p1v,on1=Camera:WorldToViewportPoint(p1.Position)
+                            local p2v,on2=Camera:WorldToViewportPoint(p2.Position)
                             if on1 and on2 and p1v.Z>0 and p2v.Z>0 then
-                                local ln = data.lines[index]
+                                local ln=data.lines[index]
                                 ln.From=Vector2.new(p1v.X+options.offsetX,p1v.Y+options.offsetY)
                                 ln.To=Vector2.new(p2v.X+options.offsetX,p2v.Y+options.offsetY)
                                 ln.Color=color
@@ -147,8 +153,9 @@ if Drawing then
                     drawBone("RightLowerArm","RightHand",14)
                 end
 
-                if data.name then data.name.Font=availableFonts[options.font] or 0 end
-                if data.dist then data.dist.Font=data.name.Font end
+                -- Name & Distance
+                if data.name then data.name.Font = availableFonts[options.font] or 0 end
+                if data.dist then data.dist.Font = data.name.Font end
 
                 if options.name and onScreen then
                     data.name.Text=player.Name
@@ -160,7 +167,7 @@ if Drawing then
 
                 if options.distance and onScreen then
                     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    local dist = root and (root.Position-hrp.Position).Magnitude or 0
+                    local dist=root and (root.Position-hrp.Position).Magnitude or 0
                     data.dist.Text=string.format("%.1f m",dist)
                     local yOff=(data.box.Size and data.box.Size.Y/2 or 40)+12
                     data.dist.Position=Vector2.new(pos3.X+options.offsetX,pos3.Y+yOff+options.offsetY)
@@ -173,41 +180,7 @@ if Drawing then
 end
 
 -- Carrega Aimbot V2 remoto
-local function safeLoadAimbotV2()
-    pcall(function()
-        if getgenv and getgenv().Aimbot then return end
-        local raw = game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
-        if raw and raw ~= "" then local f=loadstring(raw) if f then f() end end
-    end)
-end
+pcall(function()
+    if getgenv and getgenv().Aimbot then return end
+    local raw=
 
-safeLoadAimbotV2()
-
--- Tenta criar janela unificada (Pepsi UI)
-local function tryCreateUnifiedWindow()
-    local okLib,Library=pcall(function()
-        local obj = game:GetObjects("rbxassetid://7657867786")[1]
-        if obj and obj.Source then return loadstring(obj.Source)() end
-    end)
-    if not okLib or not Library then return nil,"library_failed" end
-    local Aimbot = (getgenv and getgenv().Aimbot) or nil
-
-    local MainFrame = Library:CreateWindow({
-        Name = "Aimbot e ESP feito por Ryan",
-        Themeable = {
-            Image = "7059346386",
-            Info = "Made by Exunys\nPowered by Pepsi's UI Library",
-            Credit = false
-        },
-        Background = "",
-        Theme = [[{"__Designer.Colors.section":"ADC7FF"}]] -- resumido
-    })
-
-    -- Tabs, sections e bindings de Aimbot/FOV/ESP seguem aqui (igual no seu script original)
-    -- ESP Settings agora usa sliders R/G/B integrados
-    return MainFrame
-end
-
-pcall(tryCreateUnifiedWindow)
-
-print("Aimbot e ESP feito por Ryan inicializado.")
