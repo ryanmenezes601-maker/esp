@@ -1,7 +1,6 @@
--- Aimbot e ESP feito por Ryan (versão atualizada)
--- Integra ESP Settings na UI do Aimbot V2 (Pepsi UI) quando possível
--- Se a Library remota não carregar, cria __um único__ menu local (sem rótulos "fallback")
--- Adicionado: Círculo FOV visível (Drawing.Circle) e Color picker avançado (sliders R/G/B)
+-- Aimbot e ESP feito por Ryan (versão melhorada)
+-- Mantém: ESP (box, skeleton, name, distance, rgb/fixed color), FOV circle, color sliders R/G/B
+-- Tenta carregar Aimbot V2 remoto e Pepsi UI; se falhar, cria UMA GUI local compacta (sem rótulos "fallback")
 
 -- Services
 local UserInputService = game:GetService("UserInputService")
@@ -10,7 +9,7 @@ local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
--- Options (shared between UI and ESP draw)
+-- Options (shared entre UI e ESP draw)
 local options = {
     -- ESP
     box = true,
@@ -51,17 +50,18 @@ end
 -- Ensure fixedColor matches sliders on start
 options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB)
 
--- Drawing/ESP implementation (always active, uses options table)
-local successDrawing, DrawingAPI = pcall(function() return Drawing end)
-if not successDrawing then
+-- Drawing check
+local DrawingAvailable = false
+pcall(function() DrawingAvailable = (typeof(Drawing) == "table" or typeof(Drawing) == "userdata") end)
+if not DrawingAvailable then
     warn("Drawing API não disponível neste executor. ESP e FOV circle não funcionarão.")
 end
 
-local ESP_TABLE = {}
-
+-- Helpers to create drawing objects (only if Drawing exists)
 local function makeBox()
-    if not Drawing then return end
-    local b = Drawing.new("Square")
+    if not DrawingAvailable then return nil end
+    local ok, b = pcall(function() return Drawing.new("Square") end)
+    if not ok or not b then return nil end
     b.Thickness = 1
     b.Filled = false
     b.Visible = false
@@ -70,8 +70,9 @@ local function makeBox()
 end
 
 local function makeLine()
-    if not Drawing then return end
-    local l = Drawing.new("Line")
+    if not DrawingAvailable then return nil end
+    local ok, l = pcall(function() return Drawing.new("Line") end)
+    if not ok or not l then return nil end
     l.Thickness = 1
     l.Visible = false
     l.Transparency = 1
@@ -79,8 +80,9 @@ local function makeLine()
 end
 
 local function makeText()
-    if not Drawing then return end
-    local t = Drawing.new("Text")
+    if not DrawingAvailable then return nil end
+    local ok, t = pcall(function() return Drawing.new("Text") end)
+    if not ok or not t then return nil end
     t.Size = 14
     t.Color = Color3.fromRGB(255,255,255)
     t.Center = true
@@ -90,16 +92,28 @@ local function makeText()
     return t
 end
 
+-- ESP storage & cleanup
+local ESP_TABLE = {}
+
+local function safeRemove(drawObj)
+    if not drawObj then return end
+    pcall(function()
+        if drawObj.Remove then
+            drawObj:Remove()
+        else
+            drawObj.Visible = false
+        end
+    end)
+end
+
 local function cleanupESP(player)
     local d = ESP_TABLE[player]
     if d then
-        if d.box and d.box.Remove then pcall(function() d.box:Remove() end) end
-        if d.name and d.name.Remove then pcall(function() d.name:Remove() end) end
-        if d.dist and d.dist.Remove then pcall(function() d.dist:Remove() end) end
+        safeRemove(d.box)
+        safeRemove(d.name)
+        safeRemove(d.dist)
         if d.lines then
-            for _,ln in ipairs(d.lines) do
-                if ln and ln.Remove then pcall(function() ln:Remove() end) end
-            end
+            for _,ln in ipairs(d.lines) do safeRemove(ln) end
         end
         ESP_TABLE[player] = nil
     end
@@ -108,8 +122,8 @@ end
 Players.PlayerRemoving:Connect(function(plr) cleanupESP(plr) end)
 
 -- FOV Circle Drawing (centered on screen)
-local FOVCircle
-if Drawing then
+local FOVCircle = nil
+if DrawingAvailable then
     local ok, c = pcall(function() return Drawing.new("Circle") end)
     if ok and c then
         FOVCircle = c
@@ -125,9 +139,10 @@ if Drawing then
     end
 end
 
-if Drawing then
+-- Render loop: update ESP + FOV
+if DrawingAvailable then
     RunService.RenderStepped:Connect(function()
-        -- Update FOV circle
+        -- Update FOV circle position, color, radius
         if FOVCircle then
             if options.fovVisible then
                 local vx, vy = Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2
@@ -161,7 +176,7 @@ if Drawing then
                 local color = options.rgb and getRGBColor() or options.fixedColor
 
                 -- Box
-                if options.box and onScreen and pos3.Z > 0.1 then
+                if data.box and options.box and onScreen and pos3.Z > 0.1 then
                     local height = math.clamp((humanoid.HipHeight or 2) * (200/pos3.Z), 10, 1000)
                     local width = math.clamp(height / 2, 6, 600)
                     data.box.Position = Vector2.new(pos3.X - width/2 + options.offsetX, pos3.Y - height/2 + options.offsetY)
@@ -173,8 +188,10 @@ if Drawing then
                 end
 
                 -- Skeleton
-                for _,ln in ipairs(data.lines) do ln.Visible = false end
-                if options.skeleton then
+                if data.lines then
+                    for _,ln in ipairs(data.lines) do ln.Visible = false end
+                end
+                if options.skeleton and data.lines then
                     local function drawBone(a,b,index)
                         local p1 = player.Character:FindFirstChild(a)
                         local p2 = player.Character:FindFirstChild(b)
@@ -192,7 +209,7 @@ if Drawing then
                             end
                         end
                     end
-                    -- bones (roblox R15/R6 best-effort)
+                    -- bones R15/R6 best-effort
                     drawBone("Head","UpperTorso",1)
                     drawBone("UpperTorso","LowerTorso",2)
                     drawBone("LowerTorso","LeftUpperLeg",3)
@@ -215,7 +232,7 @@ if Drawing then
 
                 if options.name and onScreen then
                     data.name.Text = player.Name
-                    local yOff = (data.box.Size and data.box.Size.Y/2 or 40) + 12
+                    local yOff = ((data.box and data.box.Size and data.box.Size.Y) or 40) / 2 + 12
                     data.name.Position = Vector2.new(pos3.X + options.offsetX, pos3.Y - yOff + options.offsetY)
                     data.name.Color = color
                     data.name.Visible = true
@@ -227,7 +244,7 @@ if Drawing then
                     local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     local dist = root and (root.Position - hrp.Position).Magnitude or 0
                     data.dist.Text = string.format("%.1f m", dist)
-                    local yOff = (data.box.Size and data.box.Size.Y/2 or 40) + 12
+                    local yOff = ((data.box and data.box.Size and data.box.Size.Y) or 40) / 2 + 12
                     data.dist.Position = Vector2.new(pos3.X + options.offsetX, pos3.Y + yOff + options.offsetY)
                     data.dist.Color = Color3.fromRGB(220,220,220)
                     data.dist.Visible = true
@@ -241,51 +258,61 @@ if Drawing then
     end)
 end
 
--- Safe load Aimbot V2 (remote) and store Aimbot in getgenv
+-- Safe load Aimbot V2 (remote) and store in getgenv
 local function safeLoadAimbotV2()
     local ok, err = pcall(function()
         if getgenv and getgenv().Aimbot then return end
-        local raw = game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
-        if raw and raw ~= "" then
-            local f = loadstring(raw)
-            if f then f() end
+        -- pcall HttpGet because alguns ambientes bloqueiam
+        if http and http.get then
+            local raw = http.get("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
+            if raw and raw.Body then
+                local f = loadstring(raw.Body)
+                if f then f() end
+            end
+        else
+            -- fallback with game:HttpGet if available
+            if pcall(function() return game.HttpGet end) then
+                local raw = game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
+                if raw and raw ~= "" then
+                    local f = loadstring(raw)
+                    if f then f() end
+                end
+            end
         end
     end)
     if not ok then warn("Falha ao carregar Aimbot V2:", err) end
 end
 
--- Try to load remote Aimbot right away (non-blocking)
-safeLoadAimbotV2()
+-- Tenta carregar remoto (não bloqueante)
+pcall(safeLoadAimbotV2)
 
--- Attempt to load Pepsi UI Library and create unified window
+-- Tentativa de criar janela unificada (Pepsi library)
 local function tryCreateUnifiedWindow()
-    -- Try to load Library object (rbxasset)
     local okLib, Library = pcall(function()
         local obj = game:GetObjects("rbxassetid://7657867786")[1]
-        if obj and obj.Source then return loadstring(obj.Source)() end
+        if obj and obj.Source then
+            local f = loadstring(obj.Source)
+            if f then return f() end
+        end
+        return nil
     end)
     if not okLib or not Library then return nil, "library_failed" end
 
-    -- If remote Aimbot loaded, bind directly to its Settings; otherwise use local options table
     local Aimbot = (getgenv and getgenv().Aimbot) or nil
     local Settings, FOVSettings, Functions
     if Aimbot then Settings, FOVSettings, Functions = Aimbot.Settings, Aimbot.FOVSettings, Aimbot.Functions end
 
-    -- Create Window
     local MainFrame = Library:CreateWindow({
         Name = "Aimbot e ESP feito por Ryan",
         Themeable = { Image = "7059346386", Info = "Made by Exunys\nPowered by Pepsi's UI Library", Credit = false },
         Background = "",
-        Theme = [[{"__Designer.Colors.section":"ADC7FF","__Designer.Colors.topGradient":"1B242F","__Designer.Settings.ShowHideKey":"Enum.KeyCode.RShift","__Designer.Colors.otherElementText":"54637D","__Designer.Colors.hoveredOptionBottom":"38667D","__Designer.Colors.unhoveredOptionTop":"407495","__Designer.Colors.innerBorder":"2C4168","__Designer.Colors.unselectedOption":"4E6EA0","__Designer.Background.UseBackgroundImage":true,"__Designer.Files.WorkspaceFile":"Aimbot V2","__Designer.Colors.main":"23A0FF","__Designer.Colors.outerBorder":"162943","__Designer.Background.ImageColor":"FFFFFF","__Designer.Colors.tabText":"C9DFF1","__Designer.Colors.elementBorder":"111D26","__Designer.Colors.sectionBackground":"0E141C","__Designer.Colors.selectedOption":"558AC2","__Designer.Colors.background":"11182A","__Designer.Colors.bottomGradient":"202B42","__Designer.Background.ImageTransparency":95,"__Designer.Colors.hoveredOptionTop":"4885A0","__Designer.Colors.elementText":"7692B8","__Designer.Colors.unhoveredOptionBottom":"5471C4"}]]
     })
 
-    -- Tabs
     local SettingsTab = MainFrame:CreateTab({ Name = "Settings" })
     local FOVSettingsTab = MainFrame:CreateTab({ Name = "FOV Settings" })
     local ESPSettingsTab = MainFrame:CreateTab({ Name = "ESP Settings" })
     local FunctionsTab = MainFrame:CreateTab({ Name = "Functions" })
 
-    -- Sections for Aimbot (populate if Settings/FOVSettings exist)
     local Values = SettingsTab:CreateSection({ Name = "Values" })
     local Checks = SettingsTab:CreateSection({ Name = "Checks" })
     local ThirdPerson = SettingsTab:CreateSection({ Name = "Third Person Mode?" })
@@ -293,9 +320,8 @@ local function tryCreateUnifiedWindow()
     local FOV_Appearance = FOVSettingsTab:CreateSection({ Name = "Appearance" })
     local FunctionsSection = FunctionsTab:CreateSection({ Name = "Functions" })
 
-    -- Aimbot UI integration: if remote Aimbot loaded, bind Controls to its Settings; otherwise create local fallback controls
+    -- Aimbot bindings (se Aimbot remoto existir, liga nas settings; senão usa fallback options)
     do
-        -- Values
         if Settings then
             Values:AddToggle({ Name = "Enabled", Value = Settings.Enabled, Callback = function(New) Settings.Enabled = New end }).Default = Settings.Enabled
             Values:AddToggle({ Name = "Toggle", Value = Settings.Toggle, Callback = function(New) Settings.Toggle = New end }).Default = Settings.Toggle
@@ -311,7 +337,6 @@ local function tryCreateUnifiedWindow()
             Values:AddSlider({ Name = "Sensitivity", Value = options.sensitivity, Callback = function(New) options.sensitivity = New end, Min = 0, Max = 1, Decimals = 2 }).Default = options.sensitivity
         end
 
-        -- Checks
         if Settings then
             Checks:AddToggle({ Name = "Team Check", Value = Settings.TeamCheck, Callback = function(New) Settings.TeamCheck = New end }).Default = Settings.TeamCheck
             Checks:AddToggle({ Name = "Wall Check", Value = Settings.WallCheck, Callback = function(New) Settings.WallCheck = New end }).Default = Settings.WallCheck
@@ -320,7 +345,6 @@ local function tryCreateUnifiedWindow()
             Checks:AddToggle({ Name = "Team Check", Value = options.teamCheck, Callback = function(New) options.teamCheck = New end }).Default = options.teamCheck
         end
 
-        -- Third person
         if Settings then
             ThirdPerson:AddToggle({ Name = "Enable Third Person", Value = Settings.ThirdPerson, Callback = function(New) Settings.ThirdPerson = New end }).Default = Settings.ThirdPerson
             ThirdPerson:AddSlider({ Name = "Sensitivity", Value = Settings.ThirdPersonSensitivity, Callback = function(New) Settings.ThirdPersonSensitivity = New end, Min = 0.1, Max = 5, Decimals = 1 }).Default = Settings.ThirdPersonSensitivity
@@ -329,7 +353,6 @@ local function tryCreateUnifiedWindow()
             ThirdPerson:AddSlider({ Name = "Sensitivity", Value = 1, Callback = function() end, Min = 0.1, Max = 5, Decimals = 1 }).Default = 1
         end
 
-        -- FOV Settings
         if FOVSettings then
             FOV_Values:AddToggle({ Name = "Enabled", Value = FOVSettings.Enabled, Callback = function(New) FOVSettings.Enabled = New end }).Default = FOVSettings.Enabled
             FOV_Values:AddToggle({ Name = "Visible", Value = FOVSettings.Visible, Callback = function(New) FOVSettings.Visible = New end }).Default = FOVSettings.Visible
@@ -341,8 +364,6 @@ local function tryCreateUnifiedWindow()
             FOV_Appearance:AddColorpicker({ Name = "Color", Value = FOVSettings.Color, Callback = function(New) FOVSettings.Color = New end }).Default = FOVSettings.Color
             FOV_Appearance:AddColorpicker({ Name = "Locked Color", Value = FOVSettings.LockedColor, Callback = function(New) FOVSettings.LockedColor = New end }).Default = FOVSettings.LockedColor
         else
-            -- bind fallback controls to options
-            FOV_Values:AddToggle({ Name = "Enabled", Value = true, Callback = function(New) options.aimbotEnabled = New end }).Default = true
             FOV_Values:AddToggle({ Name = "Visible", Value = options.fovVisible, Callback = function(New) options.fovVisible = New end }).Default = options.fovVisible
             FOV_Values:AddSlider({ Name = "Amount", Value = options.fov, Callback = function(New) options.fov = New end, Min = 10, Max = 500 }).Default = options.fov
             FOV_Appearance:AddSlider({ Name = "Thickness", Value = (FOVCircle and FOVCircle.Thickness) or 1, Callback = function(New) if FOVCircle then FOVCircle.Thickness = New end end, Min = 1, Max = 10 }).Default = (FOVCircle and FOVCircle.Thickness) or 1
@@ -350,10 +371,9 @@ local function tryCreateUnifiedWindow()
         end
     end
 
-    -- ESP Settings Tab (nossas adições)
+    -- ESP Settings tab (integrações)
     do
         local ESPSection = ESPSettingsTab:CreateSection({ Name = "ESP Options" })
-        -- Bind our options table to UI controls
         ESPSection:AddToggle({ Name = "Box", Value = options.box, Callback = function(New) options.box = New end }).Default = options.box
         ESPSection:AddToggle({ Name = "Skeleton", Value = options.skeleton, Callback = function(New) options.skeleton = New end }).Default = options.skeleton
         ESPSection:AddToggle({ Name = "RGB (rainbow)", Value = options.rgb, Callback = function(New) options.rgb = New end }).Default = options.rgb
@@ -361,7 +381,7 @@ local function tryCreateUnifiedWindow()
         ESPSection:AddToggle({ Name = "Show Distance", Value = options.distance, Callback = function(New) options.distance = New end }).Default = options.distance
         ESPSection:AddDropdown({ Name = "Fonte", Value = options.font, Callback = function(New) options.font = New end, List = {"UI","System","Plex","Monospace","Cartoon"}, Nothing = "UI" }).Default = options.font
 
-        -- Advanced color picker: implement as 3 sliders (R,G,B) so funciona onde a Library não tiver colorpicker personalizado
+        -- color sliders (fallback se library não tiver colorpicker)
         ESPSection:AddSlider({ Name = "Fixed Color R", Value = options.colorR, Callback = function(New) options.colorR = math.floor(New); options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB) end, Min = 0, Max = 255, Decimals = 0 }).Default = options.colorR
         ESPSection:AddSlider({ Name = "Fixed Color G", Value = options.colorG, Callback = function(New) options.colorG = math.floor(New); options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB) end, Min = 0, Max = 255, Decimals = 0 }).Default = options.colorG
         ESPSection:AddSlider({ Name = "Fixed Color B", Value = options.colorB, Callback = function(New) options.colorB = math.floor(New); options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB) end, Min = 0, Max = 255, Decimals = 0 }).Default = options.colorB
@@ -374,14 +394,13 @@ local function tryCreateUnifiedWindow()
         ESPSection:AddSlider({ Name = "Offset Y", Value = options.offsetY, Callback = function(New) options.offsetY = New end, Min = -300, Max = 300 }).Default = options.offsetY
     end
 
-    -- Functions tab (bind remote if present)
     do
         if (getgenv and getgenv().Aimbot and getgenv().Aimbot.Functions) then
             local RemoteFunctions = getgenv().Aimbot.Functions
             FunctionsSection:AddButton({ Name = "Reset Settings", Callback = function() RemoteFunctions.ResetSettings(); Library.ResetAll() end })
             FunctionsSection:AddButton({ Name = "Restart", Callback = RemoteFunctions.Restart })
             FunctionsSection:AddButton({ Name = "Exit", Callback = function() RemoteFunctions:Exit(); Library.Unload() end })
-            FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() setclipboard("https://github.com/Exunys/Aimbot-V2") end })
+            FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() pcall(setclipboard, "https://github.com/Exunys/Aimbot-V2") end })
         else
             FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() pcall(setclipboard, "https://github.com/Exunys/Aimbot-V2") end })
         end
@@ -390,131 +409,141 @@ local function tryCreateUnifiedWindow()
     return MainFrame
 end
 
--- Create only one GUI (Library) if possible, otherwise create a compact local GUI (single window, not 'fallback')
+-- Cria apenas UMA GUI local se Library falhar
 local createdOk, createdResult = pcall(function() return tryCreateUnifiedWindow() end)
 if not createdOk or createdResult == nil then
-    -- If Library failed, create a single local GUI (compact) (NOT duplicated, not titled "fallback")
     warn("Não foi possível criar UI unificada com Pepsi Library. Criando menu local minimal (único).")
 
-    -- Minimal single window UI (local)
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "Aimbot_e_ESP_Ryan"
-    screenGui.Parent = game.CoreGui
+    -- Evita duplicar GUI local se já existir
+    if game.CoreGui:FindFirstChild("Aimbot_e_ESP_Ryan") then
+        print("UI local já existe. Não criando outra.")
+    else
+        local screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "Aimbot_e_ESP_Ryan"
+        screenGui.Parent = game.CoreGui
 
-    local frame = Instance.new("Frame", screenGui)
-    frame.Position = UDim2.new(0,20,0,80)
-    frame.Size = UDim2.new(0,520,0,420)
-    frame.BackgroundColor3 = Color3.fromRGB(12,18,30)
-    frame.BorderSizePixel = 0
-    frame.Active = true
-    frame.Draggable = true
+        local frame = Instance.new("Frame", screenGui)
+        frame.Position = UDim2.new(0,20,0,80)
+        frame.Size = UDim2.new(0,520,0,420)
+        frame.BackgroundColor3 = Color3.fromRGB(12,18,30)
+        frame.BorderSizePixel = 0
+        frame.Active = true
+        frame.Draggable = true
 
-    local title = Instance.new("TextLabel", frame)
-    title.Size = UDim2.new(1,0,0,36)
-    title.Position = UDim2.new(0,0,0,0)
-    title.BackgroundColor3 = Color3.fromRGB(22,30,44)
-    title.TextColor3 = Color3.fromRGB(230,240,255)
-    title.Text = "Aimbot e ESP feito por Ryan"
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 16
+        local title = Instance.new("TextLabel", frame)
+        title.Size = UDim2.new(1,0,0,36)
+        title.Position = UDim2.new(0,0,0,0)
+        title.BackgroundColor3 = Color3.fromRGB(22,30,44)
+        title.TextColor3 = Color3.fromRGB(230,240,255)
+        title.Text = "Aimbot e ESP feito por Ryan"
+        title.Font = Enum.Font.GothamBold
+        title.TextSize = 16
 
-    -- single-column compact controls
-    local container = Instance.new("ScrollingFrame", frame)
-    container.Position = UDim2.new(0,8,0,44)
-    container.Size = UDim2.new(1,-16,1,-52)
-    container.CanvasSize = UDim2.new(0,0,0,1200)
-    container.BackgroundTransparency = 1
-    container.ScrollBarThickness = 6
+        local container = Instance.new("ScrollingFrame", frame)
+        container.Position = UDim2.new(0,8,0,44)
+        container.Size = UDim2.new(1,-16,1,-52)
+        container.BackgroundTransparency = 1
+        container.ScrollBarThickness = 6
 
-    local function addLabel(y, text)
-        local lbl = Instance.new("TextLabel", container)
-        lbl.Position = UDim2.new(0,0,0,y)
-        lbl.Size = UDim2.new(1,0,0,22)
-        lbl.BackgroundTransparency = 1
-        lbl.TextColor3 = Color3.fromRGB(200,210,220)
-        lbl.Text = text
-        lbl.Font = Enum.Font.Gotham
-        lbl.TextSize = 14
-        return lbl
-    end
-    local function addToggle(y, text, key)
-        local btn = Instance.new("TextButton", container)
-        btn.Position = UDim2.new(0,0,0,y)
-        btn.Size = UDim2.new(1,0,0,28)
-        btn.BackgroundColor3 = Color3.fromRGB(28,36,52)
-        btn.TextColor3 = Color3.fromRGB(230,240,255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 14
-        btn.Text = text .. ": " .. (options[key] and "ON" or "OFF")
-        btn.MouseButton1Click:Connect(function()
-            options[key] = not options[key]
+        -- cria controles simples (toggle/slider) vinculados ao `options`
+        local function addLabel(y, text)
+            local lbl = Instance.new("TextLabel", container)
+            lbl.Position = UDim2.new(0,0,0,y)
+            lbl.Size = UDim2.new(1,0,0,22)
+            lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = Color3.fromRGB(200,210,220)
+            lbl.Text = text
+            lbl.Font = Enum.Font.Gotham
+            lbl.TextSize = 14
+            return lbl
+        end
+        local function addToggle(y, text, key)
+            local btn = Instance.new("TextButton", container)
+            btn.Position = UDim2.new(0,0,0,y)
+            btn.Size = UDim2.new(1,0,0,28)
+            btn.BackgroundColor3 = Color3.fromRGB(28,36,52)
+            btn.TextColor3 = Color3.fromRGB(230,240,255)
+            btn.Font = Enum.Font.Gotham
+            btn.TextSize = 14
             btn.Text = text .. ": " .. (options[key] and "ON" or "OFF")
-        end)
-    end
-    local function addSlider(y, text, key, min, max, step)
-        local btn = Instance.new("TextButton", container)
-        btn.Position = UDim2.new(0,0,0,y)
-        btn.Size = UDim2.new(1,0,0,28)
-        btn.BackgroundColor3 = Color3.fromRGB(28,36,52)
-        btn.TextColor3 = Color3.fromRGB(230,240,255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 14
-        btn.Text = text .. ": " .. tostring(options[key])
-        btn.MouseButton1Click:Connect(function()
-            options[key] = math.floor(((options[key] + (step or 0.1)) <= max and (options[key] + (step or 0.1)) or min) * 100)/100
+            btn.MouseButton1Click:Connect(function()
+                options[key] = not options[key]
+                btn.Text = text .. ": " .. (options[key] and "ON" or "OFF")
+            end)
+            return btn
+        end
+        local function addSlider(y, text, key, min, max, step)
+            local btn = Instance.new("TextButton", container)
+            btn.Position = UDim2.new(0,0,0,y)
+            btn.Size = UDim2.new(1,0,0,28)
+            btn.BackgroundColor3 = Color3.fromRGB(28,36,52)
+            btn.TextColor3 = Color3.fromRGB(230,240,255)
+            btn.Font = Enum.Font.Gotham
+            btn.TextSize = 14
             btn.Text = text .. ": " .. tostring(options[key])
-        end)
-    end
+            btn.MouseButton1Click:Connect(function()
+                local s = step or 0.1
+                local newVal = options[key] + s
+                if newVal > max then newVal = min end
+                options[key] = math.floor(newVal * 100) / 100
+                btn.Text = text .. ": " .. tostring(options[key])
+            end)
+            return btn
+        end
 
-    local y = 0
-    addLabel(y, "== Aimbot ==") y = y + 0.04
-    addToggle(y*28, "Aimbot Enabled", "aimbotEnabled"); y = y + 1
-    addToggle(y*28, "Team Check", "teamCheck"); y = y + 1
-    addSlider(y*28, "Sensitivity", "sensitivity", 0.1, 1, 0.05); y = y + 1
-    addSlider(y*28, "FOV", "fov", 10, 500, 10); y = y + 1
-
-    addLabel(y*28, "== ESP =="); y = y + 1
-    addToggle(y*28, "Box", "box"); y = y + 1
-    addToggle(y*28, "Skeleton", "skeleton"); y = y + 1
-    addToggle(y*28, "RGB", "rgb"); y = y + 1
-    addToggle(y*28, "Show Name", "name"); y = y + 1
-    addToggle(y*28, "Show Distance", "distance"); y = y + 1
-
-    -- Color sliders (R,G,B) for fixedColor
-    local function addColorSlider(y, label, key)
-        local sld = Instance.new("TextButton", container)
-        sld.Position = UDim2.new(0,0,0,y)
-        sld.Size = UDim2.new(1,0,0,28)
-        sld.BackgroundColor3 = Color3.fromRGB(28,36,52)
-        sld.TextColor3 = Color3.fromRGB(230,240,255)
-        sld.Font = Enum.Font.Gotham
-        sld.TextSize = 14
-        sld.Text = label .. ": " .. tostring(options[key])
-        sld.MouseButton1Click:Connect(function()
-            options[key] = math.clamp(math.floor(options[key] + 16), 0, 255)
-            options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB)
+        local function addColorSlider(y, label, key)
+            local sld = Instance.new("TextButton", container)
+            sld.Position = UDim2.new(0,0,0,y)
+            sld.Size = UDim2.new(1,0,0,28)
+            sld.BackgroundColor3 = Color3.fromRGB(28,36,52)
+            sld.TextColor3 = Color3.fromRGB(230,240,255)
+            sld.Font = Enum.Font.Gotham
+            sld.TextSize = 14
             sld.Text = label .. ": " .. tostring(options[key])
-        end)
+            sld.MouseButton1Click:Connect(function()
+                options[key] = math.clamp(math.floor(options[key] + 16), 0, 255)
+                options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB)
+                sld.Text = label .. ": " .. tostring(options[key])
+            end)
+            return sld
+        end
+
+        local y = 0
+        addLabel(y * 28, "== Aimbot ==") y = y + 1
+        addToggle(y * 28, "Aimbot Enabled", "aimbotEnabled"); y = y + 1
+        addToggle(y * 28, "Team Check", "teamCheck"); y = y + 1
+        addSlider(y * 28, "Sensitivity", "sensitivity", 0.1, 1, 0.05); y = y + 1
+        addSlider(y * 28, "FOV", "fov", 10, 500, 10); y = y + 1
+
+        addLabel(y * 28, "== ESP =="); y = y + 1
+        addToggle(y * 28, "Box", "box"); y = y + 1
+        addToggle(y * 28, "Skeleton", "skeleton"); y = y + 1
+        addToggle(y * 28, "RGB", "rgb"); y = y + 1
+        addToggle(y * 28, "Show Name", "name"); y = y + 1
+        addToggle(y * 28, "Show Distance", "distance"); y = y + 1
+
+        addColorSlider(y * 28, "Color R", "colorR"); y = y + 1
+        addColorSlider(y * 28, "Color G", "colorG"); y = y + 1
+        addColorSlider(y * 28, "Color B", "colorB"); y = y + 1
+
+        addToggle(y * 28, "FOV Visible", "fovVisible"); y = y + 1
+        addSlider(y * 28, "FOV Radius", "fov", 10, 1000, 10); y = y + 1
+
+        container.CanvasSize = UDim2.new(0, 0, 0, math.max(500, y * 28))
+        print("Aimbot e ESP feito por Ryan inicializado (UI local criado).")
     end
-    addColorSlider(y*28, "Color R", "colorR"); y = y + 1
-    addColorSlider(y*28, "Color G", "colorG"); y = y + 1
-    addColorSlider(y*28, "Color B", "colorB"); y = y + 1
-
-    addToggle(y*28, "FOV Visible", "fovVisible"); y = y + 1
-    addSlider(y*28, "FOV Radius", "fov", 10, 1000, 10); y = y + 1
-
-    print("Aimbot e ESP feito por Ryan inicializado (UI local criado).")
 end
 
--- Local fallback simple aimbot (if remote Aimbot not present)
+-- Local fallback de aimbot (se aimbot remoto não presente)
 local function getClosestPlayerLocal()
     local closest, bestDist = nil, options.fov
+    local mousePos = UserInputService:GetMouseLocation()
     for _,pl in ipairs(Players:GetPlayers()) do
         if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild(options.targetPart) then
             if options.teamCheck and pl.Team == LocalPlayer.Team then continue end
             local ppos, onScreen = Camera:WorldToViewportPoint(pl.Character[options.targetPart].Position)
-            if onScreen then
-                local diff = (Vector2.new(ppos.X, ppos.Y) - UserInputService:GetMouseLocation()).Magnitude
+            if onScreen and ppos.Z > 0 then
+                local diff = (Vector2.new(ppos.X, ppos.Y) - mousePos).Magnitude
                 if diff < bestDist then bestDist = diff closest = pl end
             end
         end
@@ -522,16 +551,28 @@ local function getClosestPlayerLocal()
     return closest
 end
 
+-- Tenta obter mouse (para alguns executores)
+local mouse
+pcall(function() mouse = LocalPlayer:GetMouse() end)
+
 RunService.RenderStepped:Connect(function()
     if not options.aimbotEnabled then return end
     local target = getClosestPlayerLocal()
     if target and target.Character and target.Character:FindFirstChild(options.targetPart) then
         local tp = Camera:WorldToViewportPoint(target.Character[options.targetPart].Position)
+        -- mousemoverel é exploit-specific: usamos pcall para evitar error
         local ok, _ = pcall(function() return mousemoverel end)
         if ok and mousemoverel then
-            local deltaX = (tp.X - UserInputService:GetMouseLocation().X) * options.sensitivity
-            local deltaY = (tp.Y - UserInputService:GetMouseLocation().Y) * options.sensitivity
+            local deltaX = (tp.X - UserInputService:GetMouseLocation().X) * (options.sensitivity or 0.5)
+            local deltaY = (tp.Y - UserInputService:GetMouseLocation().Y) * (options.sensitivity or 0.5)
             pcall(function() mousemoverel(deltaX, deltaY) end)
+        else
+            -- se não houver mousemoverel, alternamos para mover o mouse via CFrame aim (fallback simples)
+            -- Atenção: essa abordagem depende do jogo e pode não funcionar em jogos com anti-cheat forte.
+            if Camera and Camera.CFrame then
+                local worldPos = target.Character[options.targetPart].Position
+                Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, worldPos)
+            end
         end
     end
 end)
