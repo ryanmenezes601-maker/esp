@@ -1,17 +1,14 @@
--- Aimbot e ESP feito por Ryan (versão melhorada)
--- Mantém: ESP (box, skeleton, name, distance, rgb/fixed color), FOV circle, color sliders R/G/B
--- Tenta carregar Aimbot V2 remoto e Pepsi UI; se falhar, cria UMA GUI local compacta (sem rótulos "fallback")
+-- ESP com limite de distância + menu local organizado
+-- Removido todo o código de Aimbot
 
--- Services
-local UserInputService = game:GetService("UserInputService")
+-- Serviços
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
--- Options (shared entre UI e ESP draw)
+-- Opções compartilhadas
 local options = {
-    -- ESP
     box = true,
     skeleton = true,
     rgb = true,
@@ -21,16 +18,16 @@ local options = {
     font = "UI",
     offsetX = 0,
     offsetY = 0,
-    -- Aimbot (fallback defaults)
-    aimbotEnabled = false,
-    toggle = false,
-    sensitivity = 0.5,
-    targetPart = "Head",
-    fov = 150,
+
+    -- Novo: distância máxima para exibir ESP
+    maxDistance = 1000,  -- em studs (metros aproximados)
+
+    -- FOV circle (visual)
     fovVisible = true,
+    fov = 150,
     fovColor = Color3.fromRGB(35,160,255),
-    teamCheck = true,
-    -- advanced color sliders (for fixedColor)
+
+    -- Sliders RGB para fixed color
     colorR = 255,
     colorG = 0,
     colorB = 0,
@@ -39,60 +36,61 @@ local options = {
 local availableFonts = {
     UI = 0, System = 1, Plex = 2, Monospace = 3, Cartoon = 4
 }
-local partsList = { "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso" }
 
--- Utility RGB function (rainbow)
+-- Função arco-íris
 local function getRGBColor()
     local t = tick() * 2
     return Color3.fromHSV(t % 1, 1, 1)
 end
 
--- Ensure fixedColor matches sliders on start
+-- Sincroniza fixedColor com sliders
 options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB)
 
--- Drawing check
+-- Verifica se Drawing API existe
 local DrawingAvailable = false
-pcall(function() DrawingAvailable = (typeof(Drawing) == "table" or typeof(Drawing) == "userdata") end)
+pcall(function()
+    DrawingAvailable = (typeof(Drawing) == "table" or typeof(Drawing) == "userdata")
+end)
 if not DrawingAvailable then
-    warn("Drawing API não disponível neste executor. ESP e FOV circle não funcionarão.")
+    warn("Drawing API não disponível — ESP visual não funcionará.")
 end
 
--- Helpers to create drawing objects (only if Drawing exists)
+-- Criadores seguros de objetos Drawing
 local function makeBox()
     if not DrawingAvailable then return nil end
-    local ok, b = pcall(function() return Drawing.new("Square") end)
-    if not ok or not b then return nil end
-    b.Thickness = 1
-    b.Filled = false
-    b.Visible = false
-    b.Transparency = 1
-    return b
+    local ok, obj = pcall(function() return Drawing.new("Square") end)
+    if not ok or not obj then return nil end
+    obj.Thickness = 1
+    obj.Filled = false
+    obj.Visible = false
+    obj.Transparency = 1
+    return obj
 end
 
 local function makeLine()
     if not DrawingAvailable then return nil end
-    local ok, l = pcall(function() return Drawing.new("Line") end)
-    if not ok or not l then return nil end
-    l.Thickness = 1
-    l.Visible = false
-    l.Transparency = 1
-    return l
+    local ok, obj = pcall(function() return Drawing.new("Line") end)
+    if not ok or not obj then return nil end
+    obj.Thickness = 1
+    obj.Visible = false
+    obj.Transparency = 1
+    return obj
 end
 
 local function makeText()
     if not DrawingAvailable then return nil end
-    local ok, t = pcall(function() return Drawing.new("Text") end)
-    if not ok or not t then return nil end
-    t.Size = 14
-    t.Color = Color3.fromRGB(255,255,255)
-    t.Center = true
-    t.Outline = true
-    t.Visible = false
-    t.Font = availableFonts[options.font] or 0
-    return t
+    local ok, obj = pcall(function() return Drawing.new("Text") end)
+    if not ok or not obj then return nil end
+    obj.Size = 14
+    obj.Color = Color3.fromRGB(255,255,255)
+    obj.Center = true
+    obj.Outline = true
+    obj.Visible = false
+    obj.Font = availableFonts[options.font] or 0
+    return obj
 end
 
--- ESP storage & cleanup
+-- Tabela de ESP por jogador + cleanup
 local ESP_TABLE = {}
 
 local function safeRemove(drawObj)
@@ -121,12 +119,12 @@ end
 
 Players.PlayerRemoving:Connect(function(plr) cleanupESP(plr) end)
 
--- FOV Circle Drawing (centered on screen)
+-- Círculo de FOV visual
 local FOVCircle = nil
 if DrawingAvailable then
-    local ok, c = pcall(function() return Drawing.new("Circle") end)
-    if ok and c then
-        FOVCircle = c
+    local ok, obj = pcall(function() return Drawing.new("Circle") end)
+    if ok and obj then
+        FOVCircle = obj
         FOVCircle.Visible = false
         FOVCircle.Radius = options.fov
         FOVCircle.Thickness = 1
@@ -134,30 +132,37 @@ if DrawingAvailable then
         FOVCircle.Filled = false
         FOVCircle.Transparency = 1
         FOVCircle.Color = options.fovColor
-    else
-        FOVCircle = nil
     end
 end
 
--- Render loop: update ESP + FOV
+-- Loop de renderização (ESP + FOV)
 if DrawingAvailable then
     RunService.RenderStepped:Connect(function()
-        -- Update FOV circle position, color, radius
+        -- Atualiza círculo FOV
         if FOVCircle then
             if options.fovVisible then
                 local vx, vy = Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2
                 FOVCircle.Position = Vector2.new(vx, vy)
                 FOVCircle.Radius = options.fov
                 FOVCircle.Color = options.fovColor
-                FOVCircle.Filled = false
                 FOVCircle.Visible = true
             else
                 FOVCircle.Visible = false
             end
         end
 
+        -- Para cada jogador
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if localRoot then
+                    local dist = (player.Character.HumanoidRootPart.Position - localRoot.Position).Magnitude
+                    if dist > options.maxDistance then
+                        if ESP_TABLE[player] then cleanupESP(player) end
+                        continue
+                    end
+                end
+
                 if not ESP_TABLE[player] then
                     ESP_TABLE[player] = {
                         box = makeBox(),
@@ -165,19 +170,25 @@ if DrawingAvailable then
                         dist = makeText(),
                         lines = {},
                     }
-                    for i=1, 20 do table.insert(ESP_TABLE[player].lines, makeLine()) end
+                    for i = 1, 20 do
+                        table.insert(ESP_TABLE[player].lines, makeLine())
+                    end
                 end
+
                 local data = ESP_TABLE[player]
-                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                local hrp = player.Character.HumanoidRootPart
                 local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-                if not hrp or not humanoid then cleanupESP(player) continue end
+                if not hrp or not humanoid then
+                    cleanupESP(player)
+                    continue
+                end
 
                 local pos3, onScreen = Camera:WorldToViewportPoint(hrp.Position)
                 local color = options.rgb and getRGBColor() or options.fixedColor
 
                 -- Box
                 if data.box and options.box and onScreen and pos3.Z > 0.1 then
-                    local height = math.clamp((humanoid.HipHeight or 2) * (200/pos3.Z), 10, 1000)
+                    local height = math.clamp((humanoid.HipHeight or 2) * (200 / pos3.Z), 10, 1000)
                     local width = math.clamp(height / 2, 6, 600)
                     data.box.Position = Vector2.new(pos3.X - width/2 + options.offsetX, pos3.Y - height/2 + options.offsetY)
                     data.box.Size = Vector2.new(width, height)
@@ -187,19 +198,19 @@ if DrawingAvailable then
                     if data.box then data.box.Visible = false end
                 end
 
-                -- Skeleton
-                if data.lines then
-                    for _,ln in ipairs(data.lines) do ln.Visible = false end
+                -- Skeleton (linhas)
+                for _,ln in ipairs(data.lines) do
+                    ln.Visible = false
                 end
-                if options.skeleton and data.lines then
-                    local function drawBone(a,b,index)
+                if options.skeleton then
+                    local function drawBone(a, b, idx)
                         local p1 = player.Character:FindFirstChild(a)
                         local p2 = player.Character:FindFirstChild(b)
                         if p1 and p2 then
                             local p1v, on1 = Camera:WorldToViewportPoint(p1.Position)
                             local p2v, on2 = Camera:WorldToViewportPoint(p2.Position)
                             if on1 and on2 and p1v.Z > 0 and p2v.Z > 0 then
-                                local ln = data.lines[index]
+                                local ln = data.lines[idx]
                                 if ln then
                                     ln.From = Vector2.new(p1v.X + options.offsetX, p1v.Y + options.offsetY)
                                     ln.To = Vector2.new(p2v.X + options.offsetX, p2v.Y + options.offsetY)
@@ -209,27 +220,25 @@ if DrawingAvailable then
                             end
                         end
                     end
-                    -- bones R15/R6 best-effort
-                    drawBone("Head","UpperTorso",1)
-                    drawBone("UpperTorso","LowerTorso",2)
-                    drawBone("LowerTorso","LeftUpperLeg",3)
-                    drawBone("LeftUpperLeg","LeftLowerLeg",4)
-                    drawBone("LeftLowerLeg","LeftFoot",5)
-                    drawBone("LowerTorso","RightUpperLeg",6)
-                    drawBone("RightUpperLeg","RightLowerLeg",7)
-                    drawBone("RightLowerLeg","RightFoot",8)
-                    drawBone("UpperTorso","LeftUpperArm",9)
-                    drawBone("LeftUpperArm","LeftLowerArm",10)
-                    drawBone("LeftLowerArm","LeftHand",11)
-                    drawBone("UpperTorso","RightUpperArm",12)
-                    drawBone("RightUpperArm","RightLowerArm",13)
-                    drawBone("RightLowerArm","RightHand",14)
+                    -- algumas conexões de ossos (R15 / R6)
+                    drawBone("Head", "UpperTorso", 1)
+                    drawBone("UpperTorso", "LowerTorso", 2)
+                    drawBone("LowerTorso", "LeftUpperLeg", 3)
+                    drawBone("LeftUpperLeg", "LeftLowerLeg", 4)
+                    drawBone("LeftLowerLeg", "LeftFoot", 5)
+                    drawBone("LowerTorso", "RightUpperLeg", 6)
+                    drawBone("RightUpperLeg", "RightLowerLeg", 7)
+                    drawBone("RightLowerLeg", "RightFoot", 8)
+                    drawBone("UpperTorso", "LeftUpperArm", 9)
+                    drawBone("LeftUpperArm", "LeftLowerArm", 10)
+                    drawBone("LeftLowerArm", "LeftHand", 11)
+                    drawBone("UpperTorso", "RightUpperArm", 12)
+                    drawBone("RightUpperArm", "RightLowerArm", 13)
+                    drawBone("RightLowerArm", "RightHand", 14)
                 end
 
-                -- Name & Distance
+                -- Nome
                 if data.name then data.name.Font = availableFonts[options.font] or 0 end
-                if data.dist then data.dist.Font = data.name.Font end
-
                 if options.name and onScreen then
                     data.name.Text = player.Name
                     local yOff = ((data.box and data.box.Size and data.box.Size.Y) or 40) / 2 + 12
@@ -240,10 +249,14 @@ if DrawingAvailable then
                     if data.name then data.name.Visible = false end
                 end
 
-                if options.distance and onScreen then
-                    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                    local dist = root and (root.Position - hrp.Position).Magnitude or 0
-                    data.dist.Text = string.format("%.1f m", dist)
+                -- Distância textual
+                if data.dist and options.distance and onScreen then
+                    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    local distVal = 0
+                    if localRoot then
+                        distVal = (localRoot.Position - hrp.Position).Magnitude
+                    end
+                    data.dist.Text = string.format("%.1f m", distVal)
                     local yOff = ((data.box and data.box.Size and data.box.Size.Y) or 40) / 2 + 12
                     data.dist.Position = Vector2.new(pos3.X + options.offsetX, pos3.Y + yOff + options.offsetY)
                     data.dist.Color = Color3.fromRGB(220,220,220)
@@ -251,330 +264,132 @@ if DrawingAvailable then
                 else
                     if data.dist then data.dist.Visible = false end
                 end
-            else
-                if ESP_TABLE[player] then cleanupESP(player) end
-            end
-        end
-    end)
-end
 
--- Safe load Aimbot V2 (remote) and store in getgenv
-local function safeLoadAimbotV2()
-    local ok, err = pcall(function()
-        if getgenv and getgenv().Aimbot then return end
-        -- pcall HttpGet because alguns ambientes bloqueiam
-        if http and http.get then
-            local raw = http.get("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
-            if raw and raw.Body then
-                local f = loadstring(raw.Body)
-                if f then f() end
-            end
-        else
-            -- fallback with game:HttpGet if available
-            if pcall(function() return game.HttpGet end) then
-                local raw = game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Raw%20Main.lua")
-                if raw and raw ~= "" then
-                    local f = loadstring(raw)
-                    if f then f() end
+            else
+                if ESP_TABLE[player] then
+                    cleanupESP(player)
                 end
             end
         end
     end)
-    if not ok then warn("Falha ao carregar Aimbot V2:", err) end
 end
 
--- Tenta carregar remoto (não bloqueante)
-pcall(safeLoadAimbotV2)
-
--- Tentativa de criar janela unificada (Pepsi library)
-local function tryCreateUnifiedWindow()
-    local okLib, Library = pcall(function()
-        local obj = game:GetObjects("rbxassetid://7657867786")[1]
-        if obj and obj.Source then
-            local f = loadstring(obj.Source)
-            if f then return f() end
-        end
-        return nil
-    end)
-    if not okLib or not Library then return nil, "library_failed" end
-
-    local Aimbot = (getgenv and getgenv().Aimbot) or nil
-    local Settings, FOVSettings, Functions
-    if Aimbot then Settings, FOVSettings, Functions = Aimbot.Settings, Aimbot.FOVSettings, Aimbot.Functions end
-
-    local MainFrame = Library:CreateWindow({
-        Name = "Aimbot e ESP feito por Ryan",
-        Themeable = { Image = "7059346386", Info = "Made by Exunys\nPowered by Pepsi's UI Library", Credit = false },
-        Background = "",
-    })
-
-    local SettingsTab = MainFrame:CreateTab({ Name = "Settings" })
-    local FOVSettingsTab = MainFrame:CreateTab({ Name = "FOV Settings" })
-    local ESPSettingsTab = MainFrame:CreateTab({ Name = "ESP Settings" })
-    local FunctionsTab = MainFrame:CreateTab({ Name = "Functions" })
-
-    local Values = SettingsTab:CreateSection({ Name = "Values" })
-    local Checks = SettingsTab:CreateSection({ Name = "Checks" })
-    local ThirdPerson = SettingsTab:CreateSection({ Name = "Third Person Mode?" })
-    local FOV_Values = FOVSettingsTab:CreateSection({ Name = "Values" })
-    local FOV_Appearance = FOVSettingsTab:CreateSection({ Name = "Appearance" })
-    local FunctionsSection = FunctionsTab:CreateSection({ Name = "Functions" })
-
-    -- Aimbot bindings (se Aimbot remoto existir, liga nas settings; senão usa fallback options)
-    do
-        if Settings then
-            Values:AddToggle({ Name = "Enabled", Value = Settings.Enabled, Callback = function(New) Settings.Enabled = New end }).Default = Settings.Enabled
-            Values:AddToggle({ Name = "Toggle", Value = Settings.Toggle, Callback = function(New) Settings.Toggle = New end }).Default = Settings.Toggle
-            Settings.LockPart = Settings.LockPart or partsList[1]
-            Values:AddDropdown({ Name = "Lock Part", Value = Settings.LockPart, Callback = function(New) Settings.LockPart = New end, List = partsList, Nothing = "Head" }).Default = Settings.LockPart
-            Values:AddTextbox({ Name = "Hotkey", Value = Settings.TriggerKey or "", Callback = function(New) Settings.TriggerKey = New end }).Default = Settings.TriggerKey or ""
-            Values:AddSlider({ Name = "Sensitivity", Value = Settings.Sensitivity or 0.5, Callback = function(New) Settings.Sensitivity = New end, Min = 0, Max = 1, Decimals = 2 }).Default = Settings.Sensitivity or 0.5
-        else
-            Values:AddToggle({ Name = "Enabled", Value = options.aimbotEnabled, Callback = function(New) options.aimbotEnabled = New end }).Default = options.aimbotEnabled
-            Values:AddToggle({ Name = "Toggle", Value = options.toggle, Callback = function(New) options.toggle = New end }).Default = options.toggle
-            Values:AddDropdown({ Name = "Lock Part", Value = options.targetPart, Callback = function(New) options.targetPart = New end, List = partsList, Nothing = "Head" }).Default = options.targetPart
-            Values:AddTextbox({ Name = "Hotkey", Value = options.triggerKey or "", Callback = function(New) options.triggerKey = New end }).Default = options.triggerKey or ""
-            Values:AddSlider({ Name = "Sensitivity", Value = options.sensitivity, Callback = function(New) options.sensitivity = New end, Min = 0, Max = 1, Decimals = 2 }).Default = options.sensitivity
-        end
-
-        if Settings then
-            Checks:AddToggle({ Name = "Team Check", Value = Settings.TeamCheck, Callback = function(New) Settings.TeamCheck = New end }).Default = Settings.TeamCheck
-            Checks:AddToggle({ Name = "Wall Check", Value = Settings.WallCheck, Callback = function(New) Settings.WallCheck = New end }).Default = Settings.WallCheck
-            Checks:AddToggle({ Name = "Alive Check", Value = Settings.AliveCheck, Callback = function(New) Settings.AliveCheck = New end }).Default = Settings.AliveCheck
-        else
-            Checks:AddToggle({ Name = "Team Check", Value = options.teamCheck, Callback = function(New) options.teamCheck = New end }).Default = options.teamCheck
-        end
-
-        if Settings then
-            ThirdPerson:AddToggle({ Name = "Enable Third Person", Value = Settings.ThirdPerson, Callback = function(New) Settings.ThirdPerson = New end }).Default = Settings.ThirdPerson
-            ThirdPerson:AddSlider({ Name = "Sensitivity", Value = Settings.ThirdPersonSensitivity, Callback = function(New) Settings.ThirdPersonSensitivity = New end, Min = 0.1, Max = 5, Decimals = 1 }).Default = Settings.ThirdPersonSensitivity
-        else
-            ThirdPerson:AddToggle({ Name = "Enable Third Person", Value = false, Callback = function() end }).Default = false
-            ThirdPerson:AddSlider({ Name = "Sensitivity", Value = 1, Callback = function() end, Min = 0.1, Max = 5, Decimals = 1 }).Default = 1
-        end
-
-        if FOVSettings then
-            FOV_Values:AddToggle({ Name = "Enabled", Value = FOVSettings.Enabled, Callback = function(New) FOVSettings.Enabled = New end }).Default = FOVSettings.Enabled
-            FOV_Values:AddToggle({ Name = "Visible", Value = FOVSettings.Visible, Callback = function(New) FOVSettings.Visible = New end }).Default = FOVSettings.Visible
-            FOV_Values:AddSlider({ Name = "Amount", Value = FOVSettings.Amount, Callback = function(New) FOVSettings.Amount = New end, Min = 10, Max = 300 }).Default = FOVSettings.Amount
-            FOV_Appearance:AddToggle({ Name = "Filled", Value = FOVSettings.Filled, Callback = function(New) FOVSettings.Filled = New end }).Default = FOVSettings.Filled
-            FOV_Appearance:AddSlider({ Name = "Transparency", Value = FOVSettings.Transparency, Callback = function(New) FOVSettings.Transparency = New end, Min = 0, Max = 1, Decimal = 1 }).Default = FOVSettings.Transparency
-            FOV_Appearance:AddSlider({ Name = "Sides", Value = FOVSettings.Sides, Callback = function(New) FOVSettings.Sides = New end, Min = 3, Max = 60 }).Default = FOVSettings.Sides
-            FOV_Appearance:AddSlider({ Name = "Thickness", Value = FOVSettings.Thickness, Callback = function(New) FOVSettings.Thickness = New end, Min = 1, Max = 50 }).Default = FOVSettings.Thickness
-            FOV_Appearance:AddColorpicker({ Name = "Color", Value = FOVSettings.Color, Callback = function(New) FOVSettings.Color = New end }).Default = FOVSettings.Color
-            FOV_Appearance:AddColorpicker({ Name = "Locked Color", Value = FOVSettings.LockedColor, Callback = function(New) FOVSettings.LockedColor = New end }).Default = FOVSettings.LockedColor
-        else
-            FOV_Values:AddToggle({ Name = "Visible", Value = options.fovVisible, Callback = function(New) options.fovVisible = New end }).Default = options.fovVisible
-            FOV_Values:AddSlider({ Name = "Amount", Value = options.fov, Callback = function(New) options.fov = New end, Min = 10, Max = 500 }).Default = options.fov
-            FOV_Appearance:AddSlider({ Name = "Thickness", Value = (FOVCircle and FOVCircle.Thickness) or 1, Callback = function(New) if FOVCircle then FOVCircle.Thickness = New end end, Min = 1, Max = 10 }).Default = (FOVCircle and FOVCircle.Thickness) or 1
-            FOV_Appearance:AddColorpicker({ Name = "Color", Value = options.fovColor, Callback = function(New) options.fovColor = New end }).Default = options.fovColor
-        end
+-- UI local organizado (menu único)
+do
+    -- Evita duplicar a GUI se já existir
+    if game.CoreGui:FindFirstChild("ESP_Menu_Local") then
+        -- Já existe; não criar outra.
+        return
     end
 
-    -- ESP Settings tab (integrações)
-    do
-        local ESPSection = ESPSettingsTab:CreateSection({ Name = "ESP Options" })
-        ESPSection:AddToggle({ Name = "Box", Value = options.box, Callback = function(New) options.box = New end }).Default = options.box
-        ESPSection:AddToggle({ Name = "Skeleton", Value = options.skeleton, Callback = function(New) options.skeleton = New end }).Default = options.skeleton
-        ESPSection:AddToggle({ Name = "RGB (rainbow)", Value = options.rgb, Callback = function(New) options.rgb = New end }).Default = options.rgb
-        ESPSection:AddToggle({ Name = "Show Name", Value = options.name, Callback = function(New) options.name = New end }).Default = options.name
-        ESPSection:AddToggle({ Name = "Show Distance", Value = options.distance, Callback = function(New) options.distance = New end }).Default = options.distance
-        ESPSection:AddDropdown({ Name = "Fonte", Value = options.font, Callback = function(New) options.font = New end, List = {"UI","System","Plex","Monospace","Cartoon"}, Nothing = "UI" }).Default = options.font
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ESP_Menu_Local"
+    screenGui.Parent = game.CoreGui
 
-        -- color sliders (fallback se library não tiver colorpicker)
-        ESPSection:AddSlider({ Name = "Fixed Color R", Value = options.colorR, Callback = function(New) options.colorR = math.floor(New); options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB) end, Min = 0, Max = 255, Decimals = 0 }).Default = options.colorR
-        ESPSection:AddSlider({ Name = "Fixed Color G", Value = options.colorG, Callback = function(New) options.colorG = math.floor(New); options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB) end, Min = 0, Max = 255, Decimals = 0 }).Default = options.colorG
-        ESPSection:AddSlider({ Name = "Fixed Color B", Value = options.colorB, Callback = function(New) options.colorB = math.floor(New); options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB) end, Min = 0, Max = 255, Decimals = 0 }).Default = options.colorB
+    local frame = Instance.new("Frame", screenGui)
+    frame.Position = UDim2.new(0, 20, 0, 80)
+    frame.Size = UDim2.new(0, 360, 0, 440)
+    frame.BackgroundColor3 = Color3.fromRGB(12, 18, 30)
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Draggable = true
 
-        ESPSection:AddToggle({ Name = "FOV Visible (circle)", Value = options.fovVisible, Callback = function(New) options.fovVisible = New end }).Default = options.fovVisible
-        ESPSection:AddSlider({ Name = "FOV Radius", Value = options.fov, Callback = function(New) options.fov = New end, Min = 10, Max = 1000 }).Default = options.fov
-        ESPSection:AddColorpicker({ Name = "FOV Color", Value = options.fovColor, Callback = function(New) options.fovColor = New end }).Default = options.fovColor
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 36)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundColor3 = Color3.fromRGB(22, 30, 44)
+    title.TextColor3 = Color3.fromRGB(230, 240, 255)
+    title.Text = "Configurações ESP"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
 
-        ESPSection:AddSlider({ Name = "Offset X", Value = options.offsetX, Callback = function(New) options.offsetX = New end, Min = -300, Max = 300 }).Default = options.offsetX
-        ESPSection:AddSlider({ Name = "Offset Y", Value = options.offsetY, Callback = function(New) options.offsetY = New end, Min = -300, Max = 300 }).Default = options.offsetY
+    local container = Instance.new("ScrollingFrame", frame)
+    container.Position = UDim2.new(0, 8, 0, 44)
+    container.Size = UDim2.new(1, -16, 1, -52)
+    container.BackgroundTransparency = 1
+    container.ScrollBarThickness = 6
+
+    -- Funções auxiliares para criar controles
+    local function addLabel(y, text)
+        local lbl = Instance.new("TextLabel", container)
+        lbl.Position = UDim2.new(0, 0, 0, y)
+        lbl.Size = UDim2.new(1, 0, 0, 22)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = Color3.fromRGB(200, 210, 220)
+        lbl.Text = text
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 14
+        return lbl
     end
 
-    do
-        if (getgenv and getgenv().Aimbot and getgenv().Aimbot.Functions) then
-            local RemoteFunctions = getgenv().Aimbot.Functions
-            FunctionsSection:AddButton({ Name = "Reset Settings", Callback = function() RemoteFunctions.ResetSettings(); Library.ResetAll() end })
-            FunctionsSection:AddButton({ Name = "Restart", Callback = RemoteFunctions.Restart })
-            FunctionsSection:AddButton({ Name = "Exit", Callback = function() RemoteFunctions:Exit(); Library.Unload() end })
-            FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() pcall(setclipboard, "https://github.com/Exunys/Aimbot-V2") end })
-        else
-            FunctionsSection:AddButton({ Name = "Copy Script Page", Callback = function() pcall(setclipboard, "https://github.com/Exunys/Aimbot-V2") end })
-        end
-    end
-
-    return MainFrame
-end
-
--- Cria apenas UMA GUI local se Library falhar
-local createdOk, createdResult = pcall(function() return tryCreateUnifiedWindow() end)
-if not createdOk or createdResult == nil then
-    warn("Não foi possível criar UI unificada com Pepsi Library. Criando menu local minimal (único).")
-
-    -- Evita duplicar GUI local se já existir
-    if game.CoreGui:FindFirstChild("Aimbot_e_ESP_Ryan") then
-        print("UI local já existe. Não criando outra.")
-    else
-        local screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "Aimbot_e_ESP_Ryan"
-        screenGui.Parent = game.CoreGui
-
-        local frame = Instance.new("Frame", screenGui)
-        frame.Position = UDim2.new(0,20,0,80)
-        frame.Size = UDim2.new(0,520,0,420)
-        frame.BackgroundColor3 = Color3.fromRGB(12,18,30)
-        frame.BorderSizePixel = 0
-        frame.Active = true
-        frame.Draggable = true
-
-        local title = Instance.new("TextLabel", frame)
-        title.Size = UDim2.new(1,0,0,36)
-        title.Position = UDim2.new(0,0,0,0)
-        title.BackgroundColor3 = Color3.fromRGB(22,30,44)
-        title.TextColor3 = Color3.fromRGB(230,240,255)
-        title.Text = "Aimbot e ESP feito por Ryan"
-        title.Font = Enum.Font.GothamBold
-        title.TextSize = 16
-
-        local container = Instance.new("ScrollingFrame", frame)
-        container.Position = UDim2.new(0,8,0,44)
-        container.Size = UDim2.new(1,-16,1,-52)
-        container.BackgroundTransparency = 1
-        container.ScrollBarThickness = 6
-
-        -- cria controles simples (toggle/slider) vinculados ao `options`
-        local function addLabel(y, text)
-            local lbl = Instance.new("TextLabel", container)
-            lbl.Position = UDim2.new(0,0,0,y)
-            lbl.Size = UDim2.new(1,0,0,22)
-            lbl.BackgroundTransparency = 1
-            lbl.TextColor3 = Color3.fromRGB(200,210,220)
-            lbl.Text = text
-            lbl.Font = Enum.Font.Gotham
-            lbl.TextSize = 14
-            return lbl
-        end
-        local function addToggle(y, text, key)
-            local btn = Instance.new("TextButton", container)
-            btn.Position = UDim2.new(0,0,0,y)
-            btn.Size = UDim2.new(1,0,0,28)
-            btn.BackgroundColor3 = Color3.fromRGB(28,36,52)
-            btn.TextColor3 = Color3.fromRGB(230,240,255)
-            btn.Font = Enum.Font.Gotham
-            btn.TextSize = 14
+    local function addToggle(y, text, key)
+        local btn = Instance.new("TextButton", container)
+        btn.Position = UDim2.new(0, 0, 0, y)
+        btn.Size = UDim2.new(1, 0, 0, 28)
+        btn.BackgroundColor3 = Color3.fromRGB(28, 36, 52)
+        btn.TextColor3 = Color3.fromRGB(230, 240, 255)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 14
+        btn.Text = text .. ": " .. (options[key] and "ON" or "OFF")
+        btn.MouseButton1Click:Connect(function()
+            options[key] = not options[key]
             btn.Text = text .. ": " .. (options[key] and "ON" or "OFF")
-            btn.MouseButton1Click:Connect(function()
-                options[key] = not options[key]
-                btn.Text = text .. ": " .. (options[key] and "ON" or "OFF")
-            end)
-            return btn
-        end
-        local function addSlider(y, text, key, min, max, step)
-            local btn = Instance.new("TextButton", container)
-            btn.Position = UDim2.new(0,0,0,y)
-            btn.Size = UDim2.new(1,0,0,28)
-            btn.BackgroundColor3 = Color3.fromRGB(28,36,52)
-            btn.TextColor3 = Color3.fromRGB(230,240,255)
-            btn.Font = Enum.Font.Gotham
-            btn.TextSize = 14
-            btn.Text = text .. ": " .. tostring(options[key])
-            btn.MouseButton1Click:Connect(function()
-                local s = step or 0.1
-                local newVal = options[key] + s
-                if newVal > max then newVal = min end
-                options[key] = math.floor(newVal * 100) / 100
-                btn.Text = text .. ": " .. tostring(options[key])
-            end)
-            return btn
-        end
+        end)
+        return btn
+    end
 
-        local function addColorSlider(y, label, key)
-            local sld = Instance.new("TextButton", container)
-            sld.Position = UDim2.new(0,0,0,y)
-            sld.Size = UDim2.new(1,0,0,28)
-            sld.BackgroundColor3 = Color3.fromRGB(28,36,52)
-            sld.TextColor3 = Color3.fromRGB(230,240,255)
-            sld.Font = Enum.Font.Gotham
-            sld.TextSize = 14
-            sld.Text = label .. ": " .. tostring(options[key])
-            sld.MouseButton1Click:Connect(function()
-                options[key] = math.clamp(math.floor(options[key] + 16), 0, 255)
+    local function addSlider(y, text, key, min, max, step)
+        local btn = Instance.new("TextButton", container)
+        btn.Position = UDim2.new(0, 0, 0, y)
+        btn.Size = UDim2.new(1, 0, 0, 28)
+        btn.BackgroundColor3 = Color3.fromRGB(28, 36, 52)
+        btn.TextColor3 = Color3.fromRGB(230, 240, 255)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 14
+        btn.Text = text .. ": " .. tostring(options[key])
+        btn.MouseButton1Click:Connect(function()
+            local inc = step or 1
+            local newVal = options[key] + inc
+            if newVal > max then
+                newVal = min
+            end
+            -- para inteiros
+            newVal = math.floor(newVal)
+            options[key] = newVal
+            if key == "colorR" or key == "colorG" or key == "colorB" then
                 options.fixedColor = Color3.fromRGB(options.colorR, options.colorG, options.colorB)
-                sld.Text = label .. ": " .. tostring(options[key])
-            end)
-            return sld
-        end
-
-        local y = 0
-        addLabel(y * 28, "== Aimbot ==") y = y + 1
-        addToggle(y * 28, "Aimbot Enabled", "aimbotEnabled"); y = y + 1
-        addToggle(y * 28, "Team Check", "teamCheck"); y = y + 1
-        addSlider(y * 28, "Sensitivity", "sensitivity", 0.1, 1, 0.05); y = y + 1
-        addSlider(y * 28, "FOV", "fov", 10, 500, 10); y = y + 1
-
-        addLabel(y * 28, "== ESP =="); y = y + 1
-        addToggle(y * 28, "Box", "box"); y = y + 1
-        addToggle(y * 28, "Skeleton", "skeleton"); y = y + 1
-        addToggle(y * 28, "RGB", "rgb"); y = y + 1
-        addToggle(y * 28, "Show Name", "name"); y = y + 1
-        addToggle(y * 28, "Show Distance", "distance"); y = y + 1
-
-        addColorSlider(y * 28, "Color R", "colorR"); y = y + 1
-        addColorSlider(y * 28, "Color G", "colorG"); y = y + 1
-        addColorSlider(y * 28, "Color B", "colorB"); y = y + 1
-
-        addToggle(y * 28, "FOV Visible", "fovVisible"); y = y + 1
-        addSlider(y * 28, "FOV Radius", "fov", 10, 1000, 10); y = y + 1
-
-        container.CanvasSize = UDim2.new(0, 0, 0, math.max(500, y * 28))
-        print("Aimbot e ESP feito por Ryan inicializado (UI local criado).")
+            end
+            btn.Text = text .. ": " .. tostring(options[key])
+        end)
+        return btn
     end
+
+    -- Construindo o menu
+    local y = 0
+    addLabel(y, "=== Visual ESP ===") y = y + 24
+    addToggle(y, "Mostrar Caixa", "box"); y = y + 32
+    addToggle(y, "Mostrar Esqueleto", "skeleton"); y = y + 32
+    addToggle(y, "Cor Arco-íris (RGB)", "rgb"); y = y + 32
+    addToggle(y, "Mostrar Nome", "name"); y = y + 32
+    addToggle(y, "Mostrar Distância", "distance"); y = y + 32
+
+    addLabel(y, "-- Cor Fixa --") y = y + 24
+    addSlider(y, "Cor R", "colorR", 0, 255, 16); y = y + 32
+    addSlider(y, "Cor G", "colorG", 0, 255, 16); y = y + 32
+    addSlider(y, "Cor B", "colorB", 0, 255, 16); y = y + 32
+
+    addLabel(y, "=== Círculo de FOV ===") y = y + 24
+    addToggle(y, "Mostrar Círculo", "fovVisible"); y = y + 32
+    addSlider(y, "Raio do FOV", "fov", 10, 1000, 10); y = y + 32
+
+    addLabel(y, "=== Limite de Distância ===") y = y + 24
+    addSlider(y, "Distância Máxima ESP", "maxDistance", 50, 10000, 50); y = y + 32
+
+    addLabel(y, "=== Offset de Posição ===") y = y + 24
+    addSlider(y, "Offset X", "offsetX", -300, 300, 10); y = y + 32
+    addSlider(y, "Offset Y", "offsetY", -300, 300, 10); y = y + 32
+
+    container.CanvasSize = UDim2.new(0, 0, 0, y + 50)
 end
 
--- Local fallback de aimbot (se aimbot remoto não presente)
-local function getClosestPlayerLocal()
-    local closest, bestDist = nil, options.fov
-    local mousePos = UserInputService:GetMouseLocation()
-    for _,pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and pl.Character and pl.Character:FindFirstChild(options.targetPart) then
-            if options.teamCheck and pl.Team == LocalPlayer.Team then continue end
-            local ppos, onScreen = Camera:WorldToViewportPoint(pl.Character[options.targetPart].Position)
-            if onScreen and ppos.Z > 0 then
-                local diff = (Vector2.new(ppos.X, ppos.Y) - mousePos).Magnitude
-                if diff < bestDist then bestDist = diff closest = pl end
-            end
-        end
-    end
-    return closest
-end
-
--- Tenta obter mouse (para alguns executores)
-local mouse
-pcall(function() mouse = LocalPlayer:GetMouse() end)
-
-RunService.RenderStepped:Connect(function()
-    if not options.aimbotEnabled then return end
-    local target = getClosestPlayerLocal()
-    if target and target.Character and target.Character:FindFirstChild(options.targetPart) then
-        local tp = Camera:WorldToViewportPoint(target.Character[options.targetPart].Position)
-        -- mousemoverel é exploit-specific: usamos pcall para evitar error
-        local ok, _ = pcall(function() return mousemoverel end)
-        if ok and mousemoverel then
-            local deltaX = (tp.X - UserInputService:GetMouseLocation().X) * (options.sensitivity or 0.5)
-            local deltaY = (tp.Y - UserInputService:GetMouseLocation().Y) * (options.sensitivity or 0.5)
-            pcall(function() mousemoverel(deltaX, deltaY) end)
-        else
-            -- se não houver mousemoverel, alternamos para mover o mouse via CFrame aim (fallback simples)
-            -- Atenção: essa abordagem depende do jogo e pode não funcionar em jogos com anti-cheat forte.
-            if Camera and Camera.CFrame then
-                local worldPos = target.Character[options.targetPart].Position
-                Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, worldPos)
-            end
-        end
-    end
-end)
-
-print("Script carregado: Aimbot + ESP (circle FOV & color sliders integrados).")
+print("Script carregado: ESP com limite de distância e menu organizado.")
